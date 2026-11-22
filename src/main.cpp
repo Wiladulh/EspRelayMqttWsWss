@@ -459,7 +459,7 @@ void setupWebUI() {
         server.send(200, "application/json", "{\"ok\":true}");
         if (restartWifi) {
             Serial.println("Wi-Fi credentials changed; keeping fallback AP active during STA reconnect.");
-            WiFi.disconnect(false, false);
+            disconnectStation();
             wifiAttemptActive = false;
             wifiAttemptSecondary = true;
             wifiWasConnected = false;
@@ -508,6 +508,14 @@ void stopFallbackAp() {
     fallbackApActive = false;
 }
 
+void disconnectStation() {
+#if defined(ESP32)
+    WiFi.disconnect(false, false);
+#else
+    WiFi.disconnect(false);
+#endif
+}
+
 void beginWifiAttempt(bool secondary) {
     const String& ssid = secondary ? cfg.ssid2 : cfg.ssid1;
     const String& pass = secondary ? cfg.pass2 : cfg.pass1;
@@ -515,7 +523,7 @@ void beginWifiAttempt(bool secondary) {
         wifiAttemptActive = false;
         return;
     }
-    WiFi.disconnect(false, false);
+    disconnectStation();
     Serial.print("Wi-Fi attempt (");
     Serial.print(secondary ? "secondary" : "primary");
     Serial.print("): SSID=");
