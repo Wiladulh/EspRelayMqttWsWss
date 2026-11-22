@@ -132,8 +132,9 @@ async function saveCfg() {
   }
   const timeInputs = document.querySelectorAll('#chBody input[type="time"]');
   for (const timeInput of timeInputs) {
+    timeInput.setCustomValidity('');
     if (!timeInput.value || !timeInput.checkValidity()) {
-      timeInput.setCustomValidity(timeInput.value ? '' : 'Waktu wajib diisi.');
+      timeInput.setCustomValidity('Waktu wajib diisi.');
       timeInput.reportValidity();
       return;
     }
