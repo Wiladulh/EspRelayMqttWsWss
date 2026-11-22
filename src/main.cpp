@@ -288,16 +288,18 @@ void setupWebUI() {
             f.close();
             if (error) doc.clear();
         }
-        doc.remove("pass1");
-        doc.remove("pass2");
-        doc.remove("mqttPass");
-        doc.remove("apPassword");
-        doc["pass1Set"] = cfg.pass1.length() > 0;
-        doc["pass2Set"] = cfg.pass2.length() > 0;
-        doc["mqttPassSet"] = cfg.mqttPass.length() > 0;
-        doc["apPasswordSet"] = cfg.apPassword.length() >= 8;
-        doc["boardProfile"] = boardPinProfile();
-        doc["safeGpioPins"] = boardSafeGpioList();
+        if (!doc.is<JsonObject>()) doc.to<JsonObject>();
+        JsonObject root = doc.as<JsonObject>();
+        root.remove("pass1");
+        root.remove("pass2");
+        root.remove("mqttPass");
+        root.remove("apPassword");
+        root["pass1Set"] = cfg.pass1.length() > 0;
+        root["pass2Set"] = cfg.pass2.length() > 0;
+        root["mqttPassSet"] = cfg.mqttPass.length() > 0;
+        root["apPasswordSet"] = cfg.apPassword.length() >= 8;
+        root["boardProfile"] = boardPinProfile();
+        root["safeGpioPins"] = boardSafeGpioList();
         String response;
         serializeJson(doc, response);
         server.send(200, "application/json", response);
