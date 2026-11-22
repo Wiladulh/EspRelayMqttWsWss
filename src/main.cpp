@@ -32,6 +32,11 @@ public:
     bool overflowed = false;
 
     WsMqttBridge(WebSocketsClient* w) : ws(w) {}
+    void resetRxBuffer() {
+        rxHead = 0;
+        rxTail = 0;
+        overflowed = false;
+    }
     void pushData(uint8_t* payload, size_t len) {
         for (size_t i = 0; i < len; i++) {
             size_t next = (rxHead + 1) % sizeof(rxBuf);
@@ -302,9 +307,11 @@ void applyHardwarePins() {
         }
 
         if (relayPin >= 0) {
-            pinMode(relayPin, OUTPUT);
+            // Preload the output latch while the pin is still an input so enabling
+            // OUTPUT does not briefly drive the relay's active level.
             bool level = cfg.channels[i].activeLow ? !cfg.channels[i].state : cfg.channels[i].state;
             digitalWrite(relayPin, level ? HIGH : LOW);
+            pinMode(relayPin, OUTPUT);
         }
         if (buttonPin >= 0) {
             pinMode(buttonPin, INPUT_PULLUP);
@@ -346,6 +353,7 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
         wsBinaryFragmentActive = false;
     } else if (type == WStype_DISCONNECTED) {
         wsBinaryFragmentActive = false;
+        wsBridge.resetRxBuffer();
     }
 }
 
@@ -401,6 +409,32 @@ void setupWebUI() {
         if (error || !doc.is<JsonObject>() || !doc["channels"].is<JsonArray>() ||
             doc["channels"].as<JsonArray>().size() != MAX_CHANNELS) {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_json_or_channels\"}");
+            return;
+        }
+        // Device ID is used in the AP SSID, MQTT client ID, and topic namespace.
+        // Keep it ASCII-safe and leave room for the fixed "MHOME-" AP prefix.
+        if (!doc["deviceId"].is<const char*>()) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_device_id\"}");
+            return;
+        }
+        String newDeviceId = doc["deviceId"].as<String>();
+        if (newDeviceId.length() < 1 || newDeviceId.length() > 26) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_device_id\"}");
+            return;
+        }
+        for (size_t i = 0; i < newDeviceId.length(); i++) {
+            char c = newDeviceId[i];
+            bool allowed = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                           (c >= '0' && c <= '9') || c == '-' || c == '_';
+            if (!allowed) {
+                server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_device_id\"}");
+                return;
+            }
+        }
+        String newSsid1 = doc["ssid1"] | "";
+        String newSsid2 = doc["ssid2"] | "";
+        if (newSsid1.length() > 32 || newSsid2.length() > 32) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_wifi_ssid_length\"}");
             return;
         }
         // Blank secret fields retain the current values; GET never exposes them.
@@ -474,8 +508,14 @@ void setupWebUI() {
         const String oldPass2 = cfg.pass2;
         const String oldDeviceId = cfg.deviceId;
         const String oldApPassword = cfg.apPassword;
+        const int8_t oldTimezoneOffset = cfg.timezoneOffset;
         loadConfig();
         applyHardwarePins();
+        if (oldTimezoneOffset != cfg.timezoneOffset) {
+            configTime(cfg.timezoneOffset * 3600, 0, "pool.ntp.org", "time.google.com");
+            lastCheckedMinute = 0;
+            Serial.printf("Timezone updated: UTC%+d\n", cfg.timezoneOffset);
+        }
         const bool restartAp = fallbackApActive &&
                                (oldDeviceId != cfg.deviceId || oldApPassword != cfg.apPassword);
         const bool restartWifi = oldSsid1 != cfg.ssid1 || oldPass1 != cfg.pass1 ||
