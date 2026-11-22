@@ -28,7 +28,7 @@ Jika TLS/WSS diaktifkan, firmware menunggu sinkronisasi waktu NTP sebelum handsh
 
 Gunakan sertifikat CA tepercaya. Jangan memasukkan private key. Sertifikat CA bukan password dan akan dikirim kembali oleh endpoint konfigurasi agar dapat diedit melalui WebUI.
 
-Build CI untuk ESP32 DevKit mengunggah satu artifact bernama `esp32-devkit-firmware` yang berisi `firmware.bin`. Image LittleFS tidak disertakan; flash firmware ini pada offset aplikasi tanpa menghapus seluruh flash agar konfigurasi LittleFS yang ada tetap terjaga.
+Build CI untuk ESP32 DevKit mengunggah artifact `esp32-devkit-flash-images` yang berisi `firmware.bin`, `partitions.bin`, dan `littlefs.bin`. Partition table khusus DevKit mempertahankan partisi `at_customize` yang ada, menyediakan dua slot OTA 1.375 MB, dan menyediakan partisi LittleFS 256 KB berlabel `spiffs`.
 
 Password Wi-Fi, MQTT, dan AP tidak dikembalikan oleh `GET /api/config`. Kolom password yang dibiarkan kosong saat menyimpan akan mempertahankan password tersimpan; isi nilai baru untuk menggantinya.
 
@@ -60,4 +60,11 @@ pio run -e <environment> -t uploadfs
 pio run -e <environment> -t upload
 ```
 
-Upload filesystem image dan firmware ke board yang sama. Build CI memverifikasi kompilasi; pengujian fisik relay, tombol, Wi-Fi, dan koneksi broker tetap harus dilakukan pada perangkat sebenarnya.
+Untuk ESP32 DevKit 4 MB, unduh artifact CI `esp32-devkit-flash-images`. Setelah memeriksa port serial dan memastikan board yang benar, flash image secara terpisah:
+```bash
+python -m esptool --chip esp32 --port <PORT> write-flash 0x8000 partitions.bin
+python -m esptool --chip esp32 --port <PORT> write-flash 0x3c0000 littlefs.bin
+```
+Firmware berada di offset aplikasi `0x100000`; flash `firmware.bin` ke offset tersebut hanya bila memang diperlukan. Jangan gunakan perintah erase seluruh flash. Perubahan partition table harus diperlakukan sebagai perubahan layout flash; backup data penting sebelum penerapan. Partisi `at_customize` tetap pada offset dan ukuran semula.
+
+Untuk environment lain, jalankan `pio run -e <environment> -t uploadfs` sesuai board dan partition layout-nya. Build CI memverifikasi kompilasi dan pembuatan image; pengujian fisik relay, tombol, Wi-Fi, dan koneksi broker tetap harus dilakukan pada perangkat sebenarnya.
