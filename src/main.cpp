@@ -89,6 +89,17 @@ unsigned long lastBtnDebounce[MAX_CHANNELS] = {0};
 bool lastBtnReading[MAX_CHANNELS];
 time_t lastCheckedMinute = 0;
 
+String makeDefaultApPassword() {
+#if defined(ESP8266)
+    uint32_t chipId = ESP.getChipId();
+#else
+    uint64_t chipId = ESP.getEfuseMac();
+#endif
+    char suffix[9];
+    snprintf(suffix, sizeof(suffix), "%06lX", (unsigned long)(chipId & 0xFFFFFF));
+    return String("MHome-") + suffix;
+}
+
 void loadDefaultConfig() {
     cfg.deviceId = "mhome-node-01";
     cfg.ssid1 = "WiFi_Utama";
@@ -101,8 +112,7 @@ void loadDefaultConfig() {
     cfg.mqttUser = "";
     cfg.mqttPass = "";
     cfg.mqttUseSsl = true;
-    String mac = WiFi.macAddress(); mac.replace(":", "");
-    cfg.apPassword = "MHome-" + mac.substring(mac.length() > 6 ? mac.length() - 6 : 0);
+    cfg.apPassword = makeDefaultApPassword();
     cfg.timezoneOffset = 7;
 
     for (int i = 0; i < MAX_CHANNELS; i++) {
@@ -387,7 +397,7 @@ void startFallbackAp() {
     if (fallbackApActive) return;
     WiFi.mode(WIFI_AP_STA);
     String apName = "MHOME-" + cfg.deviceId;
-    if (cfg.apPassword.length() < 8) cfg.apPassword = "MHome-setup";
+    if (cfg.apPassword.length() < 8) cfg.apPassword = makeDefaultApPassword();
     WiFi.softAP(apName.c_str(), cfg.apPassword.c_str());
     fallbackApActive = true;
 }
@@ -455,7 +465,7 @@ void ensureMqtt() {
 void checkButtons() {
     for (int i = 0; i < MAX_CHANNELS; i++) {
         int8_t pin = cfg.channels[i].buttonPin;
-        if (pin < 0) continue;
+        if (pin < 0 || !isSafeInputPin(pin)) continue;
         bool reading = digitalRead(pin);
         if (reading != lastBtnReading[i] && (millis() - lastBtnDebounce[i] > 60)) {
             lastBtnDebounce[i] = millis();
