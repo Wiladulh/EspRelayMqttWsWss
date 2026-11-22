@@ -32,7 +32,7 @@
       <div><label>Path</label><input id="mqttPath"></div>
       <div><label>MQTT Username</label><input id="mqttUser"></div>
       <div><label>MQTT Password</label><input id="mqttPass" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
-      <div style="grid-column:1/-1"><label>MQTT TLS CA Certificate (PEM, opsional pada ESP32; diperlukan pada ESP8266)</label><textarea id="mqttCaCert" spellcheck="false" placeholder="Tempel CA broker jika diperlukan. ESP32 dapat memakai konfigurasi TLS bawaan board."></textarea></div>
+      <div style="grid-column:1/-1"><label>MQTT TLS CA Certificate (PEM; opsional ESP32, wajib ESP8266)</label><textarea id="mqttCaCert" spellcheck="false" placeholder="Tempel CA broker untuk verifikasi sertifikat. ESP32-S3/C3 tetap dapat konek tanpa CA, tetapi sertifikat server tidak diverifikasi."></textarea></div>
       <div><label>Password AP Fallback (min. 8 karakter)</label><input id="apPassword" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
       <div><label>Gunakan TLS/WSS</label><input id="mqttUseSsl" type="checkbox"></div>
       <div><label>Timezone (UTC+)</label><input id="tz" type="number"></div>
