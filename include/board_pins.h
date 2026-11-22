@@ -53,7 +53,7 @@ inline const char* boardSafeGpioList() {
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
     return "0, 1, 3, 4, 5, 6, 7, 10";
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-    return "4-18 (kecuali 19/20), 21, 38, 47";
+    return "4-18, 21, 38, 47";
 #elif defined(ESP32)
     return "4, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33";
 #else
