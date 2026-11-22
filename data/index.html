@@ -126,7 +126,7 @@ async function saveCfg() {
   const res = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg)});
   const result = await res.json();
   if (!res.ok || !result.ok) { alert('Konfigurasi ditolak: ' + (result.error || 'kesalahan tidak diketahui')); return; }
-  alert('Tersimpan dan diterapkan!');
+  alert('Konfigurasi tersimpan. ESP32 sedang mencoba Wi-Fi; AP tetap aktif sampai koneksi berhasil.');
   await loadCfg();
 }
 loadCfg().catch(err => alert(err.message));
