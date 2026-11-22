@@ -28,15 +28,15 @@ public:
     WebSocketsClient* ws;
     uint8_t rxBuf[1024];
     size_t rxHead = 0, rxTail = 0;
+    bool overflowed = false;
 
     WsMqttBridge(WebSocketsClient* w) : ws(w) {}
     void pushData(uint8_t* payload, size_t len) {
         for (size_t i = 0; i < len; i++) {
             size_t next = (rxHead + 1) % sizeof(rxBuf);
-            if (next != rxTail) {
-                rxBuf[rxHead] = payload[i];
-                rxHead = next;
-            }
+            if (next == rxTail) { overflowed = true; return; }
+            rxBuf[rxHead] = payload[i];
+            rxHead = next;
         }
     }
     int connect(IPAddress ip, uint16_t port) override { return 1; }
@@ -46,6 +46,13 @@ public:
         return ws->sendBIN(buf, size) ? size : 0;
     }
     int available() override {
+        ws->loop();
+        if (overflowed) {
+            overflowed = false;
+            rxHead = rxTail = 0;
+            ws->disconnect();
+            return 0;
+        }
         return (rxHead >= rxTail) ? (rxHead - rxTail) : (sizeof(rxBuf) - rxTail + rxHead);
     }
     int read() override {
@@ -73,9 +80,11 @@ PubSubClient mqtt(wsBridge);
 
 unsigned long lastWifiCheck = 0;
 unsigned long lastMqttReconnect = 0;
+bool wifiInitialized = false;
+bool trySecondaryWifi = false;
 unsigned long lastBtnDebounce[MAX_CHANNELS] = {0};
 bool lastBtnReading[MAX_CHANNELS];
-int lastMinuteChecked = -1;
+time_t lastCheckedMinute = 0;
 
 void loadDefaultConfig() {
     cfg.deviceId = "mhome-node-01";
@@ -195,6 +204,7 @@ void publishChannelState(uint8_t idx) {
 
 void setChannelState(uint8_t idx, bool newState, bool persist = true) {
     if (idx >= MAX_CHANNELS) return;
+    bool changed = cfg.channels[idx].state != newState;
     cfg.channels[idx].state = newState;
     int8_t pin = cfg.channels[idx].relayPin;
     if (pin >= 0) {
@@ -202,7 +212,7 @@ void setChannelState(uint8_t idx, bool newState, bool persist = true) {
         digitalWrite(pin, level ? HIGH : LOW);
     }
     publishChannelState(idx);
-    if (persist) saveConfig();
+    if (persist && changed) saveConfig();
 }
 
 void applyHardwarePins() {
@@ -267,9 +277,64 @@ void setupWebUI() {
             server.send(400, "application/json", "{\"ok\":false}");
             return;
         }
+        String body = server.arg("plain");
+        if (body.length() == 0 || body.length() > 8192) {
+            server.send(413, "application/json", "{\"ok\":false,\"error\":\"invalid_config_size\"}");
+            return;
+        }
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, body);
+        if (error || !doc.is<JsonObject>() || !doc["channels"].is<JsonArray>() ||
+            doc["channels"].as<JsonArray>().size() != MAX_CHANNELS) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_json_or_channels\"}");
+            return;
+        }
+        int port = doc["mqttPort"] | 0;
+        int tz = doc["tz"] | 99;
+        if (port < 1 || port > 65535 || tz < -12 || tz > 14) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_mqtt_or_timezone\"}");
+            return;
+        }
+        bool usedPins[64] = {false};
+        for (JsonObject channel : doc["channels"].as<JsonArray>()) {
+            int relayPin = channel["rPin"] | -2;
+            int buttonPin = channel["bPin"] | -2;
+            int hOn = channel["hOn"] | -1;
+            int mOn = channel["mOn"] | -1;
+            int hOff = channel["hOff"] | -1;
+            int mOff = channel["mOff"] | -1;
+            if (relayPin < -1 || relayPin > 48 || buttonPin < -1 || buttonPin > 48 ||
+                hOn < 0 || hOn > 23 || hOff < 0 || hOff > 23 ||
+                mOn < 0 || mOn > 59 || mOff < 0 || mOff > 59) {
+                server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_channel_value\"}");
+                return;
+            }
+            if (relayPin >= 0) {
+                if (usedPins[relayPin]) {
+                    server.send(400, "application/json", "{\"ok\":false,\"error\":\"duplicate_gpio\"}");
+                    return;
+                }
+                usedPins[relayPin] = true;
+            }
+            if (buttonPin >= 0) {
+                if (usedPins[buttonPin]) {
+                    server.send(400, "application/json", "{\"ok\":false,\"error\":\"duplicate_gpio\"}");
+                    return;
+                }
+                usedPins[buttonPin] = true;
+            }
+        }
         File f = LittleFS.open(CONFIG_FILE, "w");
-        f.print(server.arg("plain"));
+        if (!f) {
+            server.send(500, "application/json", "{\"ok\":false,\"error\":\"storage_unavailable\"}");
+            return;
+        }
+        size_t written = serializeJson(doc, f);
         f.close();
+        if (written == 0) {
+            server.send(500, "application/json", "{\"ok\":false,\"error\":\"storage_write_failed\"}");
+            return;
+        }
         loadConfig();
         applyHardwarePins();
         server.send(200, "application/json", "{\"ok\":true}");
@@ -289,21 +354,23 @@ void setupWebUI() {
 }
 
 void ensureWifi() {
+    if (!wifiInitialized) {
+        WiFi.mode(WIFI_AP_STA);
+        WiFi.softAP(("MHOME-" + cfg.deviceId).c_str(), "12345678");
+        wifiInitialized = true;
+        lastWifiCheck = millis() - 15000;
+    }
     if (WiFi.status() == WL_CONNECTED) return;
     if (millis() - lastWifiCheck < 15000) return;
     lastWifiCheck = millis();
-
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(("MHOME-" + cfg.deviceId).c_str(), "12345678");
-    WiFi.begin(cfg.ssid1.c_str(), cfg.pass1.c_str());
-    unsigned long start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < 8000) {
-        delay(200);
-        yield();
-    }
-    if (WiFi.status() != WL_CONNECTED && cfg.ssid2.length() > 0) {
+    if (trySecondaryWifi && cfg.ssid2.length() > 0) {
+        WiFi.begin(cfg.ssid2.c_str(), cfg.pass2.c_str());
+    } else if (cfg.ssid1.length() > 0) {
+        WiFi.begin(cfg.ssid1.c_str(), cfg.pass1.c_str());
+    } else if (cfg.ssid2.length() > 0) {
         WiFi.begin(cfg.ssid2.c_str(), cfg.pass2.c_str());
     }
+    trySecondaryWifi = !trySecondaryWifi;
 }
 
 void ensureMqtt() {
@@ -356,8 +423,9 @@ void checkSchedules() {
     time_t now = time(nullptr);
     if (now < 1700000000) return;
     struct tm* t = localtime(&now);
-    if (t->tm_min == lastMinuteChecked) return;
-    lastMinuteChecked = t->tm_min;
+    time_t currentMinute = now / 60;
+    if (currentMinute == lastCheckedMinute) return;
+    lastCheckedMinute = currentMinute;
 
     for (int i = 0; i < MAX_CHANNELS; i++) {
         if (!cfg.channels[i].scheduleEnabled) continue;
@@ -372,8 +440,12 @@ void checkSchedules() {
 
 void setup() {
     Serial.begin(115200);
-    LittleFS.begin();
-    loadConfig();
+    if (!LittleFS.begin()) {
+        Serial.println("ERROR: LittleFS mount failed; loading defaults.");
+        loadDefaultConfig();
+    } else {
+        loadConfig();
+    }
     applyHardwarePins();
     configTime(cfg.timezoneOffset * 3600, 0, "pool.ntp.org", "time.google.com");
     mqtt.setCallback(onMqttMessage);
