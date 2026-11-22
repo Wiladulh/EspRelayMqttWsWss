@@ -97,7 +97,7 @@ String makeDefaultApPassword() {
     uint64_t chipId = ESP.getEfuseMac();
 #endif
     char suffix[9];
-    snprintf(suffix, sizeof(suffix), "%06lX", (unsigned long)(chipId & 0xFFFFFF));
+    snprintf(suffix, sizeof(suffix), "%08lX", (unsigned long)(chipId & 0xFFFFFFFFUL));
     return String("MHome-") + suffix;
 }
 
