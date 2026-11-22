@@ -341,7 +341,10 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 }
 
 void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
-    if (type == WStype_BIN) {
+    if (type == WStype_CONNECTED) {
+        wsBinaryFragmentActive = false;
+        wsBridge.resetRxBuffer();
+    } else if (type == WStype_BIN) {
         wsBridge.pushData(payload, length);
     } else if (type == WStype_FRAGMENT_BIN_START) {
         wsBinaryFragmentActive = true;
