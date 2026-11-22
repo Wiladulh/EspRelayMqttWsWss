@@ -91,14 +91,8 @@ time_t lastCheckedMinute = 0;
 void startFallbackAp();
 
 String makeDefaultApPassword() {
-#if defined(ESP8266)
-    uint32_t chipId = ESP.getChipId();
-#else
-    uint64_t chipId = ESP.getEfuseMac();
-#endif
-    char suffix[9];
-    snprintf(suffix, sizeof(suffix), "%08lX", (unsigned long)(chipId & 0xFFFFFFFFUL));
-    return String("MHome-") + suffix;
+    // Deliberately simple setup password; users should change it in WebUI.
+    return "11111111";
 }
 
 void loadDefaultConfig() {
