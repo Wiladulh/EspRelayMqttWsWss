@@ -99,6 +99,35 @@ bool lastBtnReading[MAX_CHANNELS];
 time_t lastCheckedMinute = 0;
 void startFallbackAp();
 
+#if defined(ESP32)
+void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+    switch (event) {
+        case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+            Serial.println("Wi-Fi event: station associated; waiting for DHCP IP.");
+            break;
+        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+            Serial.print("Wi-Fi event: station received IP ");
+            Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
+            break;
+        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+            Serial.print("Wi-Fi event: station disconnected, reason=");
+            Serial.println(info.wifi_sta_disconnected.reason);
+            break;
+        case ARDUINO_EVENT_WIFI_STA_LOST_IP:
+            Serial.println("Wi-Fi event: station lost its IP address.");
+            break;
+        case ARDUINO_EVENT_WIFI_AP_START:
+            Serial.println("Wi-Fi event: fallback AP started.");
+            break;
+        case ARDUINO_EVENT_WIFI_AP_STOP:
+            Serial.println("Wi-Fi event: fallback AP stopped.");
+            break;
+        default:
+            break;
+    }
+}
+#endif
+
 String makeDefaultApPassword() {
     // Deliberately simple setup password; users should change it in WebUI.
     return "11111111";
@@ -672,6 +701,9 @@ void checkSchedules() {
 
 void setup() {
     Serial.begin(115200);
+#if defined(ESP32)
+    WiFi.onEvent(onWifiEvent);
+#endif
     storageReady = LittleFS.begin();
     if (!storageReady) {
         Serial.println("ERROR: LittleFS mount failed; loading defaults.");
