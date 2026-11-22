@@ -1,0 +1,30 @@
+name: PlatformIO Build Matrix
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - esp8266_nodemcu
+          - esp32_devkit
+          - esp32s3_n16r8
+          - esp32c3_supermini
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install PlatformIO
+        run: python -m pip install --upgrade platformio
+      - name: Build firmware
+        run: pio run -e ${{ matrix.environment }}
