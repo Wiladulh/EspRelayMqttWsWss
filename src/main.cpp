@@ -270,8 +270,8 @@ void loadConfig() {
     }
     if (!loaded) return;
     LittleFS.remove(backupPath);
-    {
-        cfg.deviceId = doc["deviceId"] | cfg.deviceId;
+
+    cfg.deviceId = doc["deviceId"] | cfg.deviceId;
         cfg.ssid1 = doc["ssid1"] | cfg.ssid1;
         cfg.pass1 = doc["pass1"] | cfg.pass1;
         cfg.ssid2 = doc["ssid2"] | cfg.ssid2;
@@ -302,8 +302,6 @@ void loadConfig() {
             cfg.channels[idx].scheduleMinOff = o["mOff"] | 0;
             idx++;
         }
-    }
-    f.close();
 }
 
 void publishChannelState(uint8_t idx) {
