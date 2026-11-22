@@ -442,25 +442,31 @@ void setupWebUI() {
         const String oldPass1 = cfg.pass1;
         const String oldSsid2 = cfg.ssid2;
         const String oldPass2 = cfg.pass2;
+        const String oldDeviceId = cfg.deviceId;
+        const String oldApPassword = cfg.apPassword;
         loadConfig();
         applyHardwarePins();
-        const bool restartAp = fallbackApActive;
+        const bool restartAp = fallbackApActive &&
+                               (oldDeviceId != cfg.deviceId || oldApPassword != cfg.apPassword);
         const bool restartWifi = oldSsid1 != cfg.ssid1 || oldPass1 != cfg.pass1 ||
                                  oldSsid2 != cfg.ssid2 || oldPass2 != cfg.pass2;
+        Serial.printf("Config saved: restartWifi=%s, restartAp=%s\\n",
+                      restartWifi ? "yes" : "no", restartAp ? "yes" : "no");
         mqtt.disconnect();
         wsClient.disconnect();
         wsConfigured = false;
         tlsConfigWarningShown = false;
         server.send(200, "application/json", "{\"ok\":true}");
         if (restartWifi) {
-            WiFi.disconnect(false);
+            Serial.println("Wi-Fi credentials changed; keeping fallback AP active during STA reconnect.");
+            WiFi.disconnect(false, false);
             wifiAttemptActive = false;
             wifiAttemptSecondary = true;
             wifiWasConnected = false;
             lastWifiCheck = millis() - 3000;
         }
         if (restartAp) {
-            delay(500);
+            Serial.println("AP identity/password changed; restarting fallback AP.");
             WiFi.softAPdisconnect(false);
             fallbackApActive = false;
             startFallbackAp();
@@ -488,6 +494,7 @@ void startFallbackAp() {
     fallbackApActive = WiFi.softAP(apName.c_str(), cfg.apPassword.c_str());
     if (fallbackApActive) {
         Serial.print("Fallback AP started: "); Serial.println(apName);
+        Serial.print("Fallback AP IP: "); Serial.println(WiFi.softAPIP());
     } else {
         Serial.println("ERROR: Failed to start fallback AP.");
     }
@@ -495,6 +502,7 @@ void startFallbackAp() {
 
 void stopFallbackAp() {
     if (!fallbackApActive) return;
+    Serial.println("Fallback AP stopped after station connection.");
     WiFi.softAPdisconnect(false);
     WiFi.mode(WIFI_STA);
     fallbackApActive = false;
@@ -507,7 +515,11 @@ void beginWifiAttempt(bool secondary) {
         wifiAttemptActive = false;
         return;
     }
-    WiFi.disconnect(false);
+    WiFi.disconnect(false, false);
+    Serial.print("Wi-Fi attempt (");
+    Serial.print(secondary ? "secondary" : "primary");
+    Serial.print("): SSID=");
+    Serial.println(ssid);
     WiFi.begin(ssid.c_str(), pass.c_str());
     wifiAttemptSecondary = secondary;
     wifiAttemptStartedAt = millis();
@@ -524,6 +536,12 @@ void ensureWifi() {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
+        if (!wifiWasConnected) {
+            Serial.print("Wi-Fi connected: SSID=");
+            Serial.print(WiFi.SSID());
+            Serial.print(", IP=");
+            Serial.println(WiFi.localIP());
+        }
         wifiWasConnected = true;
         wifiAttemptActive = false;
         stopFallbackAp();
