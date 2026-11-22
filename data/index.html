@@ -8,7 +8,8 @@
   body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 16px; }
   .card { background: #1e293b; border-radius: 10px; padding: 16px; margin-bottom: 16px; border: 1px solid #334155; }
   h2 { margin-top: 0; font-size: 1.1rem; color: #38bdf8; }
-  input, select { background: #0f172a; color: #f8fafc; border: 1px solid #475569; padding: 6px 8px; border-radius: 6px; width: 100%; box-sizing: border-box; }
+  input, select, textarea { background: #0f172a; color: #f8fafc; border: 1px solid #475569; padding: 6px 8px; border-radius: 6px; width: 100%; box-sizing: border-box; }
+  textarea { min-height: 130px; font: 0.78rem ui-monospace, monospace; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
   button { background: #0284c7; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
   button.on { background: #16a34a; }
@@ -31,6 +32,7 @@
       <div><label>Path</label><input id="mqttPath"></div>
       <div><label>MQTT Username</label><input id="mqttUser"></div>
       <div><label>MQTT Password</label><input id="mqttPass" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
+      <div style="grid-column:1/-1"><label>MQTT TLS CA Certificate (PEM, wajib untuk WSS)</label><textarea id="mqttCaCert" spellcheck="false" placeholder="Tempel sertifikat CA broker di sini. Tanpa CA, koneksi WSS akan ditolak."></textarea></div>
       <div><label>Password AP Fallback (min. 8 karakter)</label><input id="apPassword" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
       <div><label>Gunakan TLS/WSS</label><input id="mqttUseSsl" type="checkbox"></div>
       <div><label>Timezone (UTC+)</label><input id="tz" type="number"></div>
@@ -73,7 +75,7 @@ async function loadCfg() {
   const res = await fetch('/api/config');
   if (!res.ok) throw new Error('Gagal membaca konfigurasi');
   cfg = await res.json();
-  ['deviceId','ssid1','ssid2','mqttHost','mqttPort','mqttPath','mqttUser','tz'].forEach(k => {
+  ['deviceId','ssid1','ssid2','mqttHost','mqttPort','mqttPath','mqttUser','tz','mqttCaCert'].forEach(k => {
     document.getElementById(k).value = cfg[k] ?? '';
   });
   ['pass1','pass2','mqttPass','apPassword'].forEach(k => {
@@ -117,7 +119,7 @@ async function toggleCh(ch) {
   await loadCfg();
 }
 async function saveCfg() {
-  ['deviceId','ssid1','ssid2','mqttHost','mqttPath','mqttUser','pass1','pass2','mqttPass','apPassword'].forEach(k => cfg[k] = document.getElementById(k).value);
+  ['deviceId','ssid1','ssid2','mqttHost','mqttPath','mqttUser','pass1','pass2','mqttPass','mqttCaCert','apPassword'].forEach(k => cfg[k] = document.getElementById(k).value);
   cfg.mqttPort = Number(document.getElementById('mqttPort').value);
   cfg.tz = Number(document.getElementById('tz').value);
   cfg.mqttUseSsl = document.getElementById('mqttUseSsl').checked;

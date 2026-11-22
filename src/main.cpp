@@ -27,7 +27,7 @@ WebSocketsClient wsClient;
 class WsMqttBridge : public Client {
 public:
     WebSocketsClient* ws;
-    uint8_t rxBuf[1024];
+    uint8_t rxBuf[2048];
     size_t rxHead = 0, rxTail = 0;
     bool overflowed = false;
 
@@ -80,11 +80,18 @@ WsMqttBridge wsBridge(&wsClient);
 PubSubClient mqtt(wsBridge);
 
 unsigned long lastWifiCheck = 0;
+unsigned long wifiAttemptStartedAt = 0;
 unsigned long lastMqttReconnect = 0;
 bool wifiInitialized = false;
-bool trySecondaryWifi = false;
+bool wifiAttemptActive = false;
+bool wifiAttemptSecondary = true;
+bool wifiWasConnected = false;
+bool wsConfigured = false;
+bool tlsConfigWarningShown = false;
 bool fallbackApActive = false;
 bool storageReady = false;
+int8_t appliedRelayPins[MAX_CHANNELS] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
+int8_t appliedButtonPins[MAX_CHANNELS] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
 unsigned long lastBtnDebounce[MAX_CHANNELS] = {0};
 bool lastBtnReading[MAX_CHANNELS];
 time_t lastCheckedMinute = 0;
@@ -106,6 +113,7 @@ void loadDefaultConfig() {
     cfg.mqttPath = "/mqtt";
     cfg.mqttUser = "";
     cfg.mqttPass = "";
+    cfg.mqttCaCert = "";
     cfg.mqttUseSsl = true;
     cfg.apPassword = makeDefaultApPassword();
     cfg.timezoneOffset = 7;
@@ -137,6 +145,7 @@ bool saveConfig() {
     doc["mqttPath"] = cfg.mqttPath;
     doc["mqttUser"] = cfg.mqttUser;
     doc["mqttPass"] = cfg.mqttPass;
+    doc["mqttCaCert"] = cfg.mqttCaCert;
     doc["mqttUseSsl"] = cfg.mqttUseSsl;
     doc["apPassword"] = cfg.apPassword;
     doc["tz"] = cfg.timezoneOffset;
@@ -184,6 +193,7 @@ void loadConfig() {
         cfg.mqttPath = doc["mqttPath"] | cfg.mqttPath;
         cfg.mqttUser = doc["mqttUser"] | cfg.mqttUser;
         cfg.mqttPass = doc["mqttPass"] | cfg.mqttPass;
+        cfg.mqttCaCert = doc["mqttCaCert"] | cfg.mqttCaCert;
         cfg.mqttUseSsl = doc["mqttUseSsl"] | cfg.mqttUseSsl;
         cfg.apPassword = doc["apPassword"] | cfg.apPassword;
         cfg.timezoneOffset = doc["tz"] | cfg.timezoneOffset;
@@ -228,17 +238,50 @@ void setChannelState(uint8_t idx, bool newState, bool persist = true) {
 }
 
 void applyHardwarePins() {
+    bool usedPins[64] = {false};
+    bool configCorrected = false;
+
     for (int i = 0; i < MAX_CHANNELS; i++) {
-        if (cfg.channels[i].relayPin >= 0 && isSafeOutputPin(cfg.channels[i].relayPin)) {
-            pinMode(cfg.channels[i].relayPin, OUTPUT);
+        int8_t relayPin = cfg.channels[i].relayPin;
+        int8_t buttonPin = cfg.channels[i].buttonPin;
+
+        if (relayPin < 0 || !isSafeOutputPin(relayPin) || usedPins[(uint8_t)relayPin]) {
+            if (relayPin != -1) configCorrected = true;
+            relayPin = -1;
+            cfg.channels[i].relayPin = -1;
+        } else {
+            usedPins[(uint8_t)relayPin] = true;
+        }
+        if (buttonPin < 0 || !isSafeInputPin(buttonPin) || usedPins[(uint8_t)buttonPin]) {
+            if (buttonPin != -1) configCorrected = true;
+            buttonPin = -1;
+            cfg.channels[i].buttonPin = -1;
+        } else {
+            usedPins[(uint8_t)buttonPin] = true;
+        }
+
+        if (appliedRelayPins[i] >= 0 && appliedRelayPins[i] != relayPin) {
+            int oldPin = appliedRelayPins[i];
+            digitalWrite(oldPin, cfg.channels[i].activeLow ? HIGH : LOW);
+            pinMode(oldPin, INPUT);
+        }
+        if (appliedButtonPins[i] >= 0 && appliedButtonPins[i] != buttonPin) {
+            pinMode(appliedButtonPins[i], INPUT);
+        }
+
+        if (relayPin >= 0) {
+            pinMode(relayPin, OUTPUT);
             bool level = cfg.channels[i].activeLow ? !cfg.channels[i].state : cfg.channels[i].state;
-            digitalWrite(cfg.channels[i].relayPin, level ? HIGH : LOW);
+            digitalWrite(relayPin, level ? HIGH : LOW);
         }
-        if (cfg.channels[i].buttonPin >= 0 && isSafeInputPin(cfg.channels[i].buttonPin)) {
-            pinMode(cfg.channels[i].buttonPin, INPUT_PULLUP);
-            lastBtnReading[i] = digitalRead(cfg.channels[i].buttonPin);
+        if (buttonPin >= 0) {
+            pinMode(buttonPin, INPUT_PULLUP);
+            lastBtnReading[i] = digitalRead(buttonPin);
         }
+        appliedRelayPins[i] = relayPin;
+        appliedButtonPins[i] = buttonPin;
     }
+    if (configCorrected && storageReady) saveConfig();
 }
 
 void onMqttMessage(char* topic, byte* payload, unsigned int length) {
@@ -258,7 +301,8 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 }
 
 void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
-    if (type == WStype_BIN) {
+    if (type == WStype_BIN || type == WStype_FRAGMENT_BIN_START ||
+        type == WStype_FRAGMENT || type == WStype_FRAGMENT_FIN) {
         wsBridge.pushData(payload, length);
     }
 }
@@ -288,6 +332,7 @@ void setupWebUI() {
         root.remove("pass2");
         root.remove("mqttPass");
         root.remove("apPassword");
+        root["mqttCaCert"] = cfg.mqttCaCert;
         root["pass1Set"] = cfg.pass1.length() > 0;
         root["pass2Set"] = cfg.pass2.length() > 0;
         root["mqttPassSet"] = cfg.mqttPass.length() > 0;
@@ -305,7 +350,7 @@ void setupWebUI() {
             return;
         }
         String body = server.arg("plain");
-        if (body.length() == 0 || body.length() > 8192) {
+        if (body.length() == 0 || body.length() > 16384) {
             server.send(413, "application/json", "{\"ok\":false,\"error\":\"invalid_config_size\"}");
             return;
         }
@@ -320,7 +365,15 @@ void setupWebUI() {
         if (!doc["pass1"].is<const char*>() || String((const char*)doc["pass1"]).length() == 0) doc["pass1"] = cfg.pass1;
         if (!doc["pass2"].is<const char*>() || String((const char*)doc["pass2"]).length() == 0) doc["pass2"] = cfg.pass2;
         if (!doc["mqttPass"].is<const char*>() || String((const char*)doc["mqttPass"]).length() == 0) doc["mqttPass"] = cfg.mqttPass;
+        if (!doc["mqttCaCert"].is<const char*>() || String((const char*)doc["mqttCaCert"]).length() == 0) doc["mqttCaCert"] = cfg.mqttCaCert;
         if (!doc["apPassword"].is<const char*>() || String((const char*)doc["apPassword"]).length() == 0) doc["apPassword"] = cfg.apPassword;
+        String caCert = doc["mqttCaCert"] | "";
+        if (caCert.length() > 6000 || (caCert.length() > 0 &&
+            (caCert.indexOf("-----BEGIN CERTIFICATE-----") < 0 ||
+             caCert.indexOf("-----END CERTIFICATE-----") < 0))) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_mqtt_ca_certificate\"}");
+            return;
+        }
         String newApPassword = doc["apPassword"] | "";
         if (newApPassword.length() < 8 || newApPassword.length() > 63) {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"ap_password_length\"}");
@@ -376,6 +429,10 @@ void setupWebUI() {
         loadConfig();
         applyHardwarePins();
         const bool restartAp = fallbackApActive;
+        mqtt.disconnect();
+        wsClient.disconnect();
+        wsConfigured = false;
+        tlsConfigWarningShown = false;
         server.send(200, "application/json", "{\"ok\":true}");
         if (restartAp) {
             delay(500);
@@ -405,8 +462,7 @@ void startFallbackAp() {
     if (cfg.apPassword.length() < 8) cfg.apPassword = makeDefaultApPassword();
     fallbackApActive = WiFi.softAP(apName.c_str(), cfg.apPassword.c_str());
     if (fallbackApActive) {
-        Serial.print("Fallback AP SSID: "); Serial.println(apName);
-        Serial.print("Fallback AP password: "); Serial.println(cfg.apPassword);
+        Serial.print("Fallback AP started: "); Serial.println(apName);
     } else {
         Serial.println("ERROR: Failed to start fallback AP.");
     }
@@ -419,56 +475,100 @@ void stopFallbackAp() {
     fallbackApActive = false;
 }
 
+void beginWifiAttempt(bool secondary) {
+    const String& ssid = secondary ? cfg.ssid2 : cfg.ssid1;
+    const String& pass = secondary ? cfg.pass2 : cfg.pass1;
+    if (ssid.length() == 0) {
+        wifiAttemptActive = false;
+        return;
+    }
+    WiFi.disconnect(false);
+    WiFi.begin(ssid.c_str(), pass.c_str());
+    wifiAttemptSecondary = secondary;
+    wifiAttemptStartedAt = millis();
+    wifiAttemptActive = true;
+}
+
 void ensureWifi() {
     if (!wifiInitialized) {
         WiFi.mode(WIFI_AP_STA);
         startFallbackAp();
         wifiInitialized = true;
-        lastWifiCheck = millis() - 15000;
+        wifiAttemptActive = false;
+        lastWifiCheck = millis() - 3000;
     }
+
     if (WiFi.status() == WL_CONNECTED) {
+        wifiWasConnected = true;
+        wifiAttemptActive = false;
         stopFallbackAp();
         return;
     }
+
     startFallbackAp();
-    if (millis() - lastWifiCheck < 15000) return;
-    lastWifiCheck = millis();
-    const bool useSecondary = trySecondaryWifi && cfg.ssid2.length() > 0;
-    const String& ssid = useSecondary ? cfg.ssid2 : cfg.ssid1;
-    const String& pass = useSecondary ? cfg.pass2 : cfg.pass1;
-    if (ssid.length()) WiFi.begin(ssid.c_str(), pass.c_str());
-    else if (cfg.ssid2.length()) WiFi.begin(cfg.ssid2.c_str(), cfg.pass2.c_str());
-    trySecondaryWifi = !trySecondaryWifi;
+    const unsigned long now = millis();
+    if (wifiAttemptActive && now - wifiAttemptStartedAt < 20000) return;
+    if (!wifiAttemptActive && now - lastWifiCheck < 3000) return;
+
+    lastWifiCheck = now;
+    bool nextSecondary = wifiWasConnected ? wifiAttemptSecondary : !wifiAttemptSecondary;
+    wifiWasConnected = false;
+    if (cfg.ssid1.length() == 0) nextSecondary = true;
+    if (cfg.ssid2.length() == 0) nextSecondary = false;
+    beginWifiAttempt(nextSecondary);
+    if (!wifiAttemptActive) beginWifiAttempt(!nextSecondary);
 }
 
 void ensureMqtt() {
-    if (WiFi.status() != WL_CONNECTED) return;
-    if (mqtt.connected()) {
+    if (WiFi.status() != WL_CONNECTED) {
+        if (mqtt.connected()) mqtt.disconnect();
+        if (wsConfigured) {
+            wsClient.disconnect();
+            wsConfigured = false;
+        }
+        return;
+    }
+
+    if (mqtt.connected() && wsClient.isConnected()) {
         mqtt.loop();
         return;
     }
-    if (millis() - lastMqttReconnect < 5000) return;
-    lastMqttReconnect = millis();
+    if (mqtt.connected() && !wsClient.isConnected()) mqtt.disconnect();
 
-    if (!wsClient.isConnected()) {
+    if (!wsConfigured) {
+        if (cfg.mqttHost.length() == 0 || cfg.mqttPath.length() == 0 || cfg.mqttPort == 0) return;
         if (cfg.mqttUseSsl) {
-            wsClient.beginSSL(cfg.mqttHost.c_str(), cfg.mqttPort, cfg.mqttPath.c_str(), "", "mqtt");
+            if (cfg.mqttCaCert.length() == 0) {
+                if (!tlsConfigWarningShown) {
+                    Serial.println("MQTT WSS disabled: configure the broker CA certificate in WebUI.");
+                    tlsConfigWarningShown = true;
+                }
+                return;
+            }
+            if (time(nullptr) < 1700000000) return;
+            wsClient.beginSslWithCA(cfg.mqttHost.c_str(), cfg.mqttPort,
+                                    cfg.mqttPath.c_str(), cfg.mqttCaCert.c_str(), "mqtt");
         } else {
             wsClient.begin(cfg.mqttHost.c_str(), cfg.mqttPort, cfg.mqttPath.c_str(), "mqtt");
         }
         wsClient.onEvent(onWsEvent);
         wsClient.setReconnectInterval(5000);
+        wsClient.enableHeartbeat(15000, 5000, 2);
+        wsConfigured = true;
+        lastMqttReconnect = millis();
+        return;
     }
 
-    if (wsClient.isConnected()) {
-        bool ok = cfg.mqttUser.length() > 0
-            ? mqtt.connect(cfg.deviceId.c_str(), cfg.mqttUser.c_str(), cfg.mqttPass.c_str())
-            : mqtt.connect(cfg.deviceId.c_str());
-        if (ok) {
-            String sub = "mhome/" + cfg.deviceId + "/ch/+/set";
-            mqtt.subscribe(sub.c_str());
-            for (int i = 0; i < MAX_CHANNELS; i++) publishChannelState(i);
-        }
+    if (!wsClient.isConnected() || millis() - lastMqttReconnect < 5000) return;
+    lastMqttReconnect = millis();
+
+    bool ok = cfg.mqttUser.length() > 0
+        ? mqtt.connect(cfg.deviceId.c_str(), cfg.mqttUser.c_str(), cfg.mqttPass.c_str())
+        : mqtt.connect(cfg.deviceId.c_str());
+    if (ok) {
+        String sub = "mhome/" + cfg.deviceId + "/ch/+/set";
+        mqtt.subscribe(sub.c_str());
+        for (int i = 0; i < MAX_CHANNELS; i++) publishChannelState(i);
     }
 }
 
