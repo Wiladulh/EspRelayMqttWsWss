@@ -450,7 +450,7 @@ void setupWebUI() {
                                (oldDeviceId != cfg.deviceId || oldApPassword != cfg.apPassword);
         const bool restartWifi = oldSsid1 != cfg.ssid1 || oldPass1 != cfg.pass1 ||
                                  oldSsid2 != cfg.ssid2 || oldPass2 != cfg.pass2;
-        Serial.printf("Config saved: restartWifi=%s, restartAp=%s\\n",
+        Serial.printf("Config saved: restartWifi=%s, restartAp=%s\n",
                       restartWifi ? "yes" : "no", restartAp ? "yes" : "no");
         mqtt.disconnect();
         wsClient.disconnect();
