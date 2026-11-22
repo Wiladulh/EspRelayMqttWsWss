@@ -23,16 +23,18 @@
     <div class="grid">
       <div><label>Device ID</label><input id="deviceId"></div>
       <div><label>SSID Utama</label><input id="ssid1"></div>
-      <div><label>Pass Utama</label><input id="pass1" type="password"></div>
+      <div><label>Pass Utama</label><input id="pass1" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
       <div><label>SSID Cadangan</label><input id="ssid2"></div>
-      <div><label>Pass Cadangan</label><input id="pass2" type="password"></div>
+      <div><label>Pass Cadangan</label><input id="pass2" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
       <div><label>MQTT WSS Host</label><input id="mqttHost"></div>
       <div><label>Port</label><input id="mqttPort" type="number"></div>
       <div><label>Path</label><input id="mqttPath"></div>
       <div><label>MQTT Username</label><input id="mqttUser"></div>
-      <div><label>MQTT Password</label><input id="mqttPass" type="password"></div>
+      <div><label>MQTT Password</label><input id="mqttPass" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
+      <div><label>Password AP Fallback (min. 8 karakter)</label><input id="apPassword" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
       <div><label>Gunakan TLS/WSS</label><input id="mqttUseSsl" type="checkbox"></div>
       <div><label>Timezone (UTC+)</label><input id="tz" type="number"></div>
+      <div><label>Profil Board</label><input id="boardProfile" readonly></div>
     </div>
   </div>
 
@@ -70,9 +72,15 @@ async function loadCfg() {
   const res = await fetch('/api/config');
   if (!res.ok) throw new Error('Gagal membaca konfigurasi');
   cfg = await res.json();
-  ['deviceId','ssid1','pass1','ssid2','pass2','mqttHost','mqttPort','mqttPath','mqttUser','mqttPass','tz'].forEach(k => {
+  ['deviceId','ssid1','ssid2','mqttHost','mqttPort','mqttPath','mqttUser','tz'].forEach(k => {
     document.getElementById(k).value = cfg[k] ?? '';
   });
+  ['pass1','pass2','mqttPass','apPassword'].forEach(k => {
+    const input = document.getElementById(k);
+    input.value = '';
+    input.placeholder = cfg[k + 'Set'] ? 'Tersimpan — kosong = tetap' : 'Belum diatur';
+  });
+  document.getElementById('boardProfile').value = cfg.boardProfile || 'Unknown';
   document.getElementById('mqttUseSsl').checked = Boolean(cfg.mqttUseSsl);
   const tb = document.getElementById('chBody');
   tb.replaceChildren();
@@ -107,7 +115,7 @@ async function toggleCh(ch) {
   await loadCfg();
 }
 async function saveCfg() {
-  ['deviceId','ssid1','pass1','ssid2','pass2','mqttHost','mqttPath','mqttUser','mqttPass'].forEach(k => cfg[k] = document.getElementById(k).value);
+  ['deviceId','ssid1','ssid2','mqttHost','mqttPath','mqttUser','pass1','pass2','mqttPass','apPassword'].forEach(k => cfg[k] = document.getElementById(k).value);
   cfg.mqttPort = Number(document.getElementById('mqttPort').value);
   cfg.tz = Number(document.getElementById('tz').value);
   cfg.mqttUseSsl = document.getElementById('mqttUseSsl').checked;
