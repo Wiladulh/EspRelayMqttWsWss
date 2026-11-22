@@ -382,7 +382,7 @@ void setupWebUI() {
         loadConfig();
         applyHardwarePins();
         if (fallbackApActive) {
-            WiFi.softAPdisconnect(true);
+            WiFi.softAPdisconnect(false);
             fallbackApActive = false;
             startFallbackAp();
         }
@@ -418,7 +418,7 @@ void startFallbackAp() {
 
 void stopFallbackAp() {
     if (!fallbackApActive) return;
-    WiFi.softAPdisconnect(true);
+    WiFi.softAPdisconnect(false);
     WiFi.mode(WIFI_STA);
     fallbackApActive = false;
 }
