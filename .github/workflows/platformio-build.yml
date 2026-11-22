@@ -3,7 +3,7 @@ name: PlatformIO Build Matrix
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "fix/**"]
   workflow_dispatch:
 
 jobs:
