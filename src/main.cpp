@@ -98,6 +98,7 @@ unsigned long lastBtnDebounce[MAX_CHANNELS] = {0};
 bool lastBtnReading[MAX_CHANNELS];
 time_t lastCheckedMinute = 0;
 void startFallbackAp();
+void disconnectStation();
 
 #if defined(ESP32)
 void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
