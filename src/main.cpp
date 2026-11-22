@@ -88,6 +88,7 @@ bool storageReady = false;
 unsigned long lastBtnDebounce[MAX_CHANNELS] = {0};
 bool lastBtnReading[MAX_CHANNELS];
 time_t lastCheckedMinute = 0;
+void startFallbackAp();
 
 String makeDefaultApPassword() {
 #if defined(ESP8266)
@@ -378,6 +379,11 @@ void setupWebUI() {
         }
         loadConfig();
         applyHardwarePins();
+        if (fallbackApActive) {
+            WiFi.softAPdisconnect(true);
+            fallbackApActive = false;
+            startFallbackAp();
+        }
         server.send(200, "application/json", "{\"ok\":true}");
     });
 
@@ -399,10 +405,13 @@ void startFallbackAp() {
     WiFi.mode(WIFI_AP_STA);
     String apName = "MHOME-" + cfg.deviceId;
     if (cfg.apPassword.length() < 8) cfg.apPassword = makeDefaultApPassword();
-    WiFi.softAP(apName.c_str(), cfg.apPassword.c_str());
-    Serial.print("Fallback AP SSID: "); Serial.println(apName);
-    Serial.print("Fallback AP password: "); Serial.println(cfg.apPassword);
-    fallbackApActive = true;
+    fallbackApActive = WiFi.softAP(apName.c_str(), cfg.apPassword.c_str());
+    if (fallbackApActive) {
+        Serial.print("Fallback AP SSID: "); Serial.println(apName);
+        Serial.print("Fallback AP password: "); Serial.println(cfg.apPassword);
+    } else {
+        Serial.println("ERROR: Failed to start fallback AP.");
+    }
 }
 
 void stopFallbackAp() {
