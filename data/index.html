@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M-Home Universal Relay Node</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 16px; }
+  .card { background: #1e293b; border-radius: 10px; padding: 16px; margin-bottom: 16px; border: 1px solid #334155; }
+  h2 { margin-top: 0; font-size: 1.1rem; color: #38bdf8; }
+  input, select { background: #0f172a; color: #f8fafc; border: 1px solid #475569; padding: 6px 8px; border-radius: 6px; width: 100%; box-sizing: border-box; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  button { background: #0284c7; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+  button.on { background: #16a34a; }
+  button.off { background: #475569; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { padding: 6px; border-bottom: 1px solid #334155; text-align: left; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h2>M-Home Universal Node (10-CH GPIO & MQTT WSS)</h2>
+    <div class="grid">
+      <div><label>Device ID</label><input id="deviceId"></div>
+      <div><label>SSID Utama</label><input id="ssid1"></div>
+      <div><label>Pass Utama</label><input id="pass1" type="password"></div>
+      <div><label>SSID Cadangan</label><input id="ssid2"></div>
+      <div><label>Pass Cadangan</label><input id="pass2" type="password"></div>
+      <div><label>MQTT WSS Host</label><input id="mqttHost"></div>
+      <div><label>Port</label><input id="mqttPort" type="number"></div>
+      <div><label>Path</label><input id="mqttPath"></div>
+      <div><label>Timezone (UTC+)</label><input id="tz" type="number"></div>
+    </div>
+  </div>
+
+  <div class="card" style="overflow-x:auto;">
+    <h2>10-Channel GPIO & NTP Schedule Mapper</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>CH</th><th>Nama</th><th>Relay GPIO</th><th>Btn GPIO</th><th>Active Low</th><th>Jadwal</th><th>ON (HH:MM)</th><th>OFF (HH:MM)</th><th>Kontrol</th>
+        </tr>
+      </thead>
+      <tbody id="chBody"></tbody>
+    </table>
+    <br>
+    <button onclick="saveCfg()">Simpan & Terapkan Konfigurasi</button>
+  </div>
+
+<script>
+let cfg = {};
+async function loadCfg() {
+  const res = await fetch('/api/config');
+  cfg = await res.json();
+  ['deviceId','ssid1','pass1','ssid2','pass2','mqttHost','mqttPort','mqttPath','tz'].forEach(k => {
+    document.getElementById(k).value = cfg[k] ?? '';
+  });
+  const tb = document.getElementById('chBody');
+  tb.innerHTML = '';
+  (cfg.channels || []).forEach((c, idx) => {
+    tb.innerHTML += `<tr>
+      <td>${c.id}</td>
+      <td><input value="${c.name}" onchange="cfg.channels[${idx}].name=this.value"></td>
+      <td><input type="number" value="${c.rPin}" onchange="cfg.channels[${idx}].rPin=+this.value"></td>
+      <td><input type="number" value="${c.bPin}" onchange="cfg.channels[${idx}].bPin=+this.value"></td>
+      <td><input type="checkbox" ${c.aLow?'checked':''} onchange="cfg.channels[${idx}].aLow=this.checked"></td>
+      <td><input type="checkbox" ${c.sEn?'checked':''} onchange="cfg.channels[${idx}].sEn=this.checked"></td>
+      <td><input type="time" value="${String(c.hOn).padStart(2,'0')}:${String(c.mOn).padStart(2,'0')}" onchange="let p=this.value.split(':');cfg.channels[${idx}].hOn=+p[0];cfg.channels[${idx}].mOn=+p[1]"></td>
+      <td><input type="time" value="${String(c.hOff).padStart(2,'0')}:${String(c.mOff).padStart(2,'0')}" onchange="let p=this.value.split(':');cfg.channels[${idx}].hOff=+p[0];cfg.channels[${idx}].mOff=+p[1]"></td>
+      <td><button class="${c.state?'on':'off'}" onclick="toggleCh(${c.id})">${c.state?'ON':'OFF'}</button></td>
+    </tr>`;
+  });
+}
+async function toggleCh(ch) {
+  await fetch('/api/toggle?ch=' + ch, {method:'POST'});
+  loadCfg();
+}
+async function saveCfg() {
+  ['deviceId','ssid1','pass1','ssid2','pass2','mqttHost','mqttPath'].forEach(k => cfg[k] = document.getElementById(k).value);
+  cfg.mqttPort = +document.getElementById('mqttPort').value;
+  cfg.tz = +document.getElementById('tz').value;
+  await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg)});
+  alert('Tersimpan dan diterapkan!');
+  loadCfg();
+}
+loadCfg();
+</script>
+</body>
+</html>
