@@ -35,6 +35,7 @@
       <div><label>Gunakan TLS/WSS</label><input id="mqttUseSsl" type="checkbox"></div>
       <div><label>Timezone (UTC+)</label><input id="tz" type="number"></div>
       <div><label>Profil Board</label><input id="boardProfile" readonly></div>
+      <div><label>GPIO aman untuk relay/tombol</label><input id="safeGpioPins" readonly></div>
     </div>
   </div>
 
@@ -81,6 +82,7 @@ async function loadCfg() {
     input.placeholder = cfg[k + 'Set'] ? 'Tersimpan — kosong = tetap' : 'Belum diatur';
   });
   document.getElementById('boardProfile').value = cfg.boardProfile || 'Unknown';
+  document.getElementById('safeGpioPins').value = cfg.safeGpioPins || 'Tidak tersedia';
   document.getElementById('mqttUseSsl').checked = Boolean(cfg.mqttUseSsl);
   const tb = document.getElementById('chBody');
   tb.replaceChildren();
