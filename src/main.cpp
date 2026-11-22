@@ -485,8 +485,15 @@ void setupWebUI() {
                 return;
             }
         }
-        String newSsid1 = doc["ssid1"] | "";
-        String newSsid2 = doc["ssid2"] | "";
+        if (!doc["ssid1"].is<const char*>() || !doc["ssid2"].is<const char*>() ||
+            !doc["mqttHost"].is<const char*>() || !doc["mqttPath"].is<const char*>() ||
+            !doc["mqttUser"].is<const char*>() || !doc["mqttPort"].is<int>() ||
+            !doc["tz"].is<int>() || !doc["mqttUseSsl"].is<bool>()) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_config_field_type\"}");
+            return;
+        }
+        String newSsid1 = doc["ssid1"].as<String>();
+        String newSsid2 = doc["ssid2"].as<String>();
         if (newSsid1.length() > 32 || newSsid2.length() > 32) {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_wifi_ssid_length\"}");
             return;
@@ -517,12 +524,21 @@ void setupWebUI() {
         }
         bool usedPins[64] = {false};
         for (JsonObject channel : doc["channels"].as<JsonArray>()) {
-            int relayPin = channel["rPin"] | -2;
-            int buttonPin = channel["bPin"] | -2;
-            int hOn = channel["hOn"] | -1;
-            int mOn = channel["mOn"] | -1;
-            int hOff = channel["hOff"] | -1;
-            int mOff = channel["mOff"] | -1;
+            if (!channel["rPin"].is<int>() || !channel["bPin"].is<int>() ||
+                !channel["hOn"].is<int>() || !channel["mOn"].is<int>() ||
+                !channel["hOff"].is<int>() || !channel["mOff"].is<int>() ||
+                !channel["name"].is<const char*>() || String(channel["name"].as<const char*>()).length() > 32 ||
+                !channel["aLow"].is<bool>() || !channel["sEn"].is<bool>() ||
+                !channel["state"].is<bool>()) {
+                server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_channel_value\"}");
+                return;
+            }
+            int relayPin = channel["rPin"].as<int>();
+            int buttonPin = channel["bPin"].as<int>();
+            int hOn = channel["hOn"].as<int>();
+            int mOn = channel["mOn"].as<int>();
+            int hOff = channel["hOff"].as<int>();
+            int mOff = channel["mOff"].as<int>();
             if ((relayPin != -1 && !isSafeOutputPin(relayPin)) ||
                 (buttonPin != -1 && !isSafeInputPin(buttonPin)) ||
                 hOn < 0 || hOn > 23 || hOff < 0 || hOff > 23 ||
