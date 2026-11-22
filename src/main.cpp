@@ -381,12 +381,14 @@ void setupWebUI() {
         }
         loadConfig();
         applyHardwarePins();
-        if (fallbackApActive) {
+        const bool restartAp = fallbackApActive;
+        server.send(200, "application/json", "{\"ok\":true}");
+        if (restartAp) {
+            delay(500);
             WiFi.softAPdisconnect(false);
             fallbackApActive = false;
             startFallbackAp();
         }
-        server.send(200, "application/json", "{\"ok\":true}");
     });
 
     server.on("/api/toggle", HTTP_POST, []() {
