@@ -88,10 +88,12 @@ bool wifiAttemptSecondary = true;
 bool wifiWasConnected = false;
 bool wsConfigured = false;
 bool tlsConfigWarningShown = false;
+bool wsBinaryFragmentActive = false;
 bool fallbackApActive = false;
 bool storageReady = false;
 int8_t appliedRelayPins[MAX_CHANNELS] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
 int8_t appliedButtonPins[MAX_CHANNELS] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
+bool appliedRelayActiveLow[MAX_CHANNELS] = {false,false,false,false,false,false,false,false,false,false};
 unsigned long lastBtnDebounce[MAX_CHANNELS] = {0};
 bool lastBtnReading[MAX_CHANNELS];
 time_t lastCheckedMinute = 0;
@@ -262,7 +264,7 @@ void applyHardwarePins() {
 
         if (appliedRelayPins[i] >= 0 && appliedRelayPins[i] != relayPin) {
             int oldPin = appliedRelayPins[i];
-            digitalWrite(oldPin, cfg.channels[i].activeLow ? HIGH : LOW);
+            digitalWrite(oldPin, appliedRelayActiveLow[i] ? HIGH : LOW);
             pinMode(oldPin, INPUT);
         }
         if (appliedButtonPins[i] >= 0 && appliedButtonPins[i] != buttonPin) {
@@ -280,6 +282,7 @@ void applyHardwarePins() {
         }
         appliedRelayPins[i] = relayPin;
         appliedButtonPins[i] = buttonPin;
+        appliedRelayActiveLow[i] = cfg.channels[i].activeLow;
     }
     if (configCorrected && storageReady) saveConfig();
 }
@@ -301,9 +304,18 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 }
 
 void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
-    if (type == WStype_BIN || type == WStype_FRAGMENT_BIN_START ||
-        type == WStype_FRAGMENT || type == WStype_FRAGMENT_FIN) {
+    if (type == WStype_BIN) {
         wsBridge.pushData(payload, length);
+    } else if (type == WStype_FRAGMENT_BIN_START) {
+        wsBinaryFragmentActive = true;
+        wsBridge.pushData(payload, length);
+    } else if (type == WStype_FRAGMENT && wsBinaryFragmentActive) {
+        wsBridge.pushData(payload, length);
+    } else if (type == WStype_FRAGMENT_FIN && wsBinaryFragmentActive) {
+        wsBridge.pushData(payload, length);
+        wsBinaryFragmentActive = false;
+    } else if (type == WStype_DISCONNECTED) {
+        wsBinaryFragmentActive = false;
     }
 }
 
@@ -426,14 +438,27 @@ void setupWebUI() {
             server.send(500, "application/json", "{\"ok\":false,\"error\":\"storage_write_failed\"}");
             return;
         }
+        const String oldSsid1 = cfg.ssid1;
+        const String oldPass1 = cfg.pass1;
+        const String oldSsid2 = cfg.ssid2;
+        const String oldPass2 = cfg.pass2;
         loadConfig();
         applyHardwarePins();
         const bool restartAp = fallbackApActive;
+        const bool restartWifi = oldSsid1 != cfg.ssid1 || oldPass1 != cfg.pass1 ||
+                                 oldSsid2 != cfg.ssid2 || oldPass2 != cfg.pass2;
         mqtt.disconnect();
         wsClient.disconnect();
         wsConfigured = false;
         tlsConfigWarningShown = false;
         server.send(200, "application/json", "{\"ok\":true}");
+        if (restartWifi) {
+            WiFi.disconnect(false);
+            wifiAttemptActive = false;
+            wifiAttemptSecondary = true;
+            wifiWasConnected = false;
+            lastWifiCheck = millis() - 3000;
+        }
         if (restartAp) {
             delay(500);
             WiFi.softAPdisconnect(false);
