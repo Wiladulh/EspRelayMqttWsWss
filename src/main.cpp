@@ -170,6 +170,39 @@ void loadDefaultConfig() {
     }
 }
 
+bool writeConfigDocument(JsonDocument& doc) {
+    const String tempPath = String(CONFIG_FILE) + ".tmp";
+    const String backupPath = String(CONFIG_FILE) + ".bak";
+
+    LittleFS.remove(tempPath);
+    File tempFile = LittleFS.open(tempPath, "w");
+    if (!tempFile) return false;
+
+    const size_t expected = measureJson(doc);
+    const size_t written = serializeJson(doc, tempFile);
+    tempFile.flush();
+    tempFile.close();
+    if (written != expected) {
+        LittleFS.remove(tempPath);
+        return false;
+    }
+
+    const bool hadCurrent = LittleFS.exists(CONFIG_FILE);
+    LittleFS.remove(backupPath);
+    if (hadCurrent && !LittleFS.rename(CONFIG_FILE, backupPath)) {
+        LittleFS.remove(tempPath);
+        return false;
+    }
+    if (!LittleFS.rename(tempPath, CONFIG_FILE)) {
+        if (hadCurrent) LittleFS.rename(backupPath, CONFIG_FILE);
+        LittleFS.remove(tempPath);
+        return false;
+    }
+
+    LittleFS.remove(backupPath);
+    return true;
+}
+
 bool saveConfig() {
     JsonDocument doc;
     doc["deviceId"] = cfg.deviceId;
@@ -203,23 +236,41 @@ bool saveConfig() {
         o["mOff"] = cfg.channels[i].scheduleMinOff;
     }
 
-    File f = LittleFS.open(CONFIG_FILE, "w");
-    if (!f) return false;
-    serializeJson(doc, f);
-    f.close();
-    return true;
+    return writeConfigDocument(doc);
 }
 
 void loadConfig() {
     loadDefaultConfig();
+    const String backupPath = String(CONFIG_FILE) + ".bak";
+    if (!LittleFS.exists(CONFIG_FILE) && LittleFS.exists(backupPath)) {
+        LittleFS.rename(backupPath, CONFIG_FILE);
+    }
     if (!LittleFS.exists(CONFIG_FILE)) {
         saveConfig();
         return;
     }
-    File f = LittleFS.open(CONFIG_FILE, "r");
-    if (!f) return;
+
     JsonDocument doc;
-    if (deserializeJson(doc, f) == DeserializationError::Ok) {
+    File f = LittleFS.open(CONFIG_FILE, "r");
+    bool loaded = false;
+    if (f) {
+        loaded = deserializeJson(doc, f) == DeserializationError::Ok;
+        f.close();
+    }
+    if (!loaded && LittleFS.exists(backupPath)) {
+        LittleFS.remove(CONFIG_FILE);
+        if (LittleFS.rename(backupPath, CONFIG_FILE)) {
+            doc.clear();
+            f = LittleFS.open(CONFIG_FILE, "r");
+            if (f) {
+                loaded = deserializeJson(doc, f) == DeserializationError::Ok;
+                f.close();
+            }
+        }
+    }
+    if (!loaded) return;
+    LittleFS.remove(backupPath);
+    {
         cfg.deviceId = doc["deviceId"] | cfg.deviceId;
         cfg.ssid1 = doc["ssid1"] | cfg.ssid1;
         cfg.pass1 = doc["pass1"] | cfg.pass1;
@@ -494,14 +545,7 @@ void setupWebUI() {
                 usedPins[buttonPin] = true;
             }
         }
-        File f = LittleFS.open(CONFIG_FILE, "w");
-        if (!f) {
-            server.send(500, "application/json", "{\"ok\":false,\"error\":\"storage_unavailable\"}");
-            return;
-        }
-        size_t written = serializeJson(doc, f);
-        f.close();
-        if (written == 0) {
+        if (!writeConfigDocument(doc)) {
             server.send(500, "application/json", "{\"ok\":false,\"error\":\"storage_write_failed\"}");
             return;
         }
