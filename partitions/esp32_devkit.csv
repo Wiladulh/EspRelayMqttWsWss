@@ -1,10 +1,16 @@
-# Preserve the existing ESP32 DevKit flash layout while adding the
-# partition-table MD5 record required by modern ESP-IDF (Arduino-ESP32 3.x).
-# Keep all offsets and sizes identical to the table read from the target board.
+# Preserve the original data partitions and add LittleFS in the flash region
+# reclaimed from the two OTA slots. The original at_customize partition is
+# retained unchanged at 0x20000..0x100000.
+#
+# 4 MB flash layout:
+#   ota_0: 1.375 MB (firmware currently ~1.14 MiB; verified by CI build)
+#   ota_1: 1.375 MB
+#   spiffs: 256 KB (Arduino LittleFS default partition label is "spiffs")
 # Name,         Type, SubType, Offset,    Size
 phy_init,       data, phy,     0x00f000,  0x001000
 otadata,        data, ota,     0x010000,  0x002000
 nvs,            data, nvs,     0x012000,  0x00e000
 at_customize,   0x40, 0x00,    0x020000,  0x0e0000
-ota_0,          app,  ota_0,   0x100000,  0x180000
-ota_1,          app,  ota_1,   0x280000,  0x180000
+ota_0,          app,  ota_0,   0x100000,  0x160000
+ota_1,          app,  ota_1,   0x260000,  0x160000
+spiffs,         data, spiffs,  0x3c0000,  0x040000
