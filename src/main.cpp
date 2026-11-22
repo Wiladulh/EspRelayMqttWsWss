@@ -563,6 +563,19 @@ void ensureMqtt() {
     if (!wsConfigured) {
         if (cfg.mqttHost.length() == 0 || cfg.mqttPath.length() == 0 || cfg.mqttPort == 0) return;
         if (cfg.mqttUseSsl) {
+            if (time(nullptr) < 1700000000) return;
+#if defined(ESP32)
+            if (cfg.mqttCaCert.length() > 0) {
+                // An explicitly configured CA takes precedence over the built-in public CA bundle.
+                wsClient.beginSslWithCA(cfg.mqttHost.c_str(), cfg.mqttPort,
+                                        cfg.mqttPath.c_str(), cfg.mqttCaCert.c_str(), "mqtt");
+            } else {
+                // The PlatformIO pre-build patch makes this use ESP32's embedded CA bundle,
+                // rather than WebSocketsClient's insecure null-bundle fallback.
+                wsClient.beginSslWithBundle(cfg.mqttHost.c_str(), cfg.mqttPort,
+                                            cfg.mqttPath.c_str(), nullptr, 0, "mqtt");
+            }
+#else
             if (cfg.mqttCaCert.length() == 0) {
                 if (!tlsConfigWarningShown) {
                     Serial.println("MQTT WSS disabled: configure the broker CA certificate in WebUI.");
@@ -570,9 +583,9 @@ void ensureMqtt() {
                 }
                 return;
             }
-            if (time(nullptr) < 1700000000) return;
             wsClient.beginSslWithCA(cfg.mqttHost.c_str(), cfg.mqttPort,
                                     cfg.mqttPath.c_str(), cfg.mqttCaCert.c_str(), "mqtt");
+#endif
         } else {
             wsClient.begin(cfg.mqttHost.c_str(), cfg.mqttPort, cfg.mqttPath.c_str(), "mqtt");
         }

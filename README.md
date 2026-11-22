@@ -21,9 +21,14 @@ Firmware modular untuk **ESP8266 NodeMCU, ESP32 DevKit, ESP32-S3 N16R8, dan ESP3
 
 ## Konfigurasi MQTT WSS
 
-Jika TLS/WSS diaktifkan, isi kolom **MQTT TLS CA Certificate** di WebUI dengan sertifikat CA broker dalam format PEM. Firmware memverifikasi sertifikat broker dan tidak melakukan fallback ke TLS insecure. Jika CA belum diisi, koneksi WSS tidak dimulai.
+Jika TLS/WSS diaktifkan, firmware menunggu sinkronisasi waktu NTP sebelum handshake dan memverifikasi sertifikat server (tanpa fallback TLS insecure).
 
-Gunakan sertifikat CA tepercaya dari pengelola broker. Jangan memasukkan private key. Sertifikat CA bukan password dan akan dikirim kembali oleh endpoint konfigurasi agar dapat diedit melalui WebUI.
+- **ESP32 DevKit:** bila kolom **MQTT TLS CA Certificate** kosong, firmware memakai CA bundle publik bawaan ESP32 Arduino core. Jika kolom diisi, CA PEM tersebut dipakai sebagai trust anchor.
+- **ESP8266 NodeMCU:** isi kolom **MQTT TLS CA Certificate** dengan CA broker dalam format PEM; tanpa CA, koneksi WSS tidak dimulai.
+
+Gunakan sertifikat CA tepercaya. Jangan memasukkan private key. Sertifikat CA bukan password dan akan dikirim kembali oleh endpoint konfigurasi agar dapat diedit melalui WebUI.
+
+Build CI untuk ESP32 DevKit mengunggah satu artifact bernama `esp32-devkit-firmware` yang berisi `firmware.bin`. Image LittleFS tidak disertakan; flash firmware ini pada offset aplikasi tanpa menghapus seluruh flash agar konfigurasi LittleFS yang ada tetap terjaga.
 
 Password Wi-Fi, MQTT, dan AP tidak dikembalikan oleh `GET /api/config`. Kolom password yang dibiarkan kosong saat menyimpan akan mempertahankan password tersimpan; isi nilai baru untuk menggantinya.
 
