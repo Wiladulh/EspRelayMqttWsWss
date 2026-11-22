@@ -296,6 +296,7 @@ void setupWebUI() {
         doc["mqttPassSet"] = cfg.mqttPass.length() > 0;
         doc["apPasswordSet"] = cfg.apPassword.length() >= 8;
         doc["boardProfile"] = boardPinProfile();
+        doc["safeGpioPins"] = boardSafeGpioList();
         String response;
         serializeJson(doc, response);
         server.send(200, "application/json", response);
@@ -399,6 +400,8 @@ void startFallbackAp() {
     String apName = "MHOME-" + cfg.deviceId;
     if (cfg.apPassword.length() < 8) cfg.apPassword = makeDefaultApPassword();
     WiFi.softAP(apName.c_str(), cfg.apPassword.c_str());
+    Serial.print("Fallback AP SSID: "); Serial.println(apName);
+    Serial.print("Fallback AP password: "); Serial.println(cfg.apPassword);
     fallbackApActive = true;
 }
 
