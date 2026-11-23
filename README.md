@@ -31,7 +31,7 @@ Gunakan CA tepercaya jika verifikasi identitas broker diperlukan. Jangan memasuk
 
 Build CI untuk ESP32 DevKit mengunggah artifact `esp32-devkit-flash-images` yang berisi `firmware.bin`, `partitions.bin`, dan `littlefs.bin`. Partition table khusus DevKit mempertahankan partisi `at_customize` yang ada, menyediakan dua slot OTA 1.375 MB, dan menyediakan partisi LittleFS 256 KB berlabel `spiffs`.
 
-Password Wi-Fi, MQTT, dan AP tidak dikembalikan oleh `GET /api/config`. Kolom password Wi-Fi, MQTT, dan AP yang dibiarkan kosong saat menyimpan akan mempertahankan password tersimpan; isi nilai baru untuk menggantinya. Password Wi-Fi menerima 8–63 karakter atau 64 digit heksadesimal (PSK); panjang di luar itu ditolak. SSID kosong menonaktifkan slot jaringan tersebut.
+Password Wi-Fi, MQTT, dan AP tidak dikembalikan oleh `GET /api/config`. Kolom password Wi-Fi, MQTT, dan AP yang dibiarkan kosong saat menyimpan akan mempertahankan password tersimpan; isi nilai baru untuk menggantinya. Untuk jaringan Wi-Fi terbuka, centang opsi **Gunakan Wi-Fi terbuka (hapus password)** pada SSID terkait. Password Wi-Fi menerima 8–63 karakter atau 64 digit heksadesimal (PSK); panjang di luar itu ditolak. SSID kosong menonaktifkan slot jaringan tersebut.
 
 ## Profil GPIO
 
