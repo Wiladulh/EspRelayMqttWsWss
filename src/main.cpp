@@ -170,36 +170,100 @@ void loadDefaultConfig() {
     }
 }
 
+bool isValidDeviceId(const String& value) {
+    if (value.length() < 1 || value.length() > 26) return false;
+    for (size_t i = 0; i < value.length(); i++) {
+        const char c = value[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '-' || c == '_')) return false;
+    }
+    return true;
+}
+
+bool isValidWifiPassword(const String& value) {
+    if (value.length() == 0 || (value.length() >= 8 && value.length() <= 63)) return true;
+    if (value.length() != 64) return false;
+    for (size_t i = 0; i < value.length(); i++) {
+        const char c = value[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
+    }
+    return true;
+}
+
+bool isJsonObjectFile(const String& path) {
+    File file = LittleFS.open(path, "r");
+    if (!file) return false;
+    JsonDocument document;
+    const bool valid = deserializeJson(document, file) == DeserializationError::Ok &&
+                       document.is<JsonObject>();
+    file.close();
+    return valid;
+}
+
+bool recoverConfigFile() {
+    const String backupPath = String(CONFIG_FILE) + ".bak";
+    const bool hasConfig = LittleFS.exists(CONFIG_FILE);
+    const bool hasBackup = LittleFS.exists(backupPath);
+
+    if (hasConfig && isJsonObjectFile(CONFIG_FILE)) {
+        if (hasBackup && !LittleFS.remove(backupPath)) {
+            Serial.println("ERROR: Could not remove stale config backup; storage update stopped.");
+            return false;
+        }
+        return true;
+    }
+    if (hasBackup && isJsonObjectFile(backupPath)) {
+        if (hasConfig && !LittleFS.remove(CONFIG_FILE)) {
+            Serial.println("ERROR: Could not remove invalid config; backup preserved.");
+            return false;
+        }
+        if (!LittleFS.rename(backupPath, CONFIG_FILE)) {
+            Serial.println("ERROR: Config backup restore failed; backup preserved.");
+            return false;
+        }
+        return isJsonObjectFile(CONFIG_FILE);
+    }
+    if (hasConfig || hasBackup) {
+        Serial.println("ERROR: No valid config or recoverable backup; preserving stored files.");
+        return false;
+    }
+    return true;
+}
+
 bool writeConfigDocument(JsonDocument& doc) {
     const String tempPath = String(CONFIG_FILE) + ".tmp";
     const String backupPath = String(CONFIG_FILE) + ".bak";
-
+    if (!recoverConfigFile()) return false;
     LittleFS.remove(tempPath);
+
     File tempFile = LittleFS.open(tempPath, "w");
     if (!tempFile) return false;
-
     const size_t expected = measureJson(doc);
     const size_t written = serializeJson(doc, tempFile);
     tempFile.flush();
+    const size_t stored = tempFile.size();
     tempFile.close();
-    if (written != expected) {
+    if (written != expected || stored != expected || !isJsonObjectFile(tempPath)) {
         LittleFS.remove(tempPath);
         return false;
     }
 
     const bool hadCurrent = LittleFS.exists(CONFIG_FILE);
-    LittleFS.remove(backupPath);
     if (hadCurrent && !LittleFS.rename(CONFIG_FILE, backupPath)) {
         LittleFS.remove(tempPath);
         return false;
     }
-    if (!LittleFS.rename(tempPath, CONFIG_FILE)) {
-        if (hadCurrent) LittleFS.rename(backupPath, CONFIG_FILE);
+    if (!LittleFS.rename(tempPath, CONFIG_FILE) || !isJsonObjectFile(CONFIG_FILE)) {
+        if (LittleFS.exists(CONFIG_FILE)) LittleFS.remove(CONFIG_FILE);
+        if (hadCurrent && !LittleFS.rename(backupPath, CONFIG_FILE)) {
+            Serial.println("CRITICAL: New config failed verification and backup restore failed.");
+        }
         LittleFS.remove(tempPath);
         return false;
     }
-
-    LittleFS.remove(backupPath);
+    if (hadCurrent && LittleFS.exists(backupPath) && !LittleFS.remove(backupPath)) {
+        Serial.println("WARNING: Config committed, but stale backup cleanup failed.");
+    }
     return true;
 }
 
@@ -241,69 +305,135 @@ bool saveConfig() {
 
 void loadConfig() {
     loadDefaultConfig();
-    const String backupPath = String(CONFIG_FILE) + ".bak";
-    if (!LittleFS.exists(CONFIG_FILE) && LittleFS.exists(backupPath)) {
-        LittleFS.rename(backupPath, CONFIG_FILE);
-    }
+    if (!recoverConfigFile()) return;
     if (!LittleFS.exists(CONFIG_FILE)) {
-        saveConfig();
+        if (!saveConfig()) Serial.println("ERROR: Could not persist default configuration.");
         return;
     }
 
     JsonDocument doc;
-    File f = LittleFS.open(CONFIG_FILE, "r");
-    bool loaded = false;
-    if (f) {
-        loaded = deserializeJson(doc, f) == DeserializationError::Ok;
-        f.close();
+    File file = LittleFS.open(CONFIG_FILE, "r");
+    if (!file) {
+        Serial.println("ERROR: Could not open configuration; defaults kept in RAM.");
+        return;
     }
-    if (!loaded && LittleFS.exists(backupPath)) {
-        LittleFS.remove(CONFIG_FILE);
-        if (LittleFS.rename(backupPath, CONFIG_FILE)) {
-            doc.clear();
-            f = LittleFS.open(CONFIG_FILE, "r");
-            if (f) {
-                loaded = deserializeJson(doc, f) == DeserializationError::Ok;
-                f.close();
-            }
-        }
+    const DeserializationError error = deserializeJson(doc, file);
+    file.close();
+    if (error || !doc.is<JsonObject>()) {
+        Serial.println("ERROR: Configuration JSON is invalid; stored file preserved.");
+        return;
     }
-    if (!loaded) return;
-    LittleFS.remove(backupPath);
 
-    cfg.deviceId = doc["deviceId"] | cfg.deviceId;
-        cfg.ssid1 = doc["ssid1"] | cfg.ssid1;
-        cfg.pass1 = doc["pass1"] | cfg.pass1;
-        cfg.ssid2 = doc["ssid2"] | cfg.ssid2;
-        cfg.pass2 = doc["pass2"] | cfg.pass2;
-        cfg.mqttHost = doc["mqttHost"] | cfg.mqttHost;
-        cfg.mqttPort = doc["mqttPort"] | cfg.mqttPort;
-        cfg.mqttPath = doc["mqttPath"] | cfg.mqttPath;
-        cfg.mqttUser = doc["mqttUser"] | cfg.mqttUser;
-        cfg.mqttPass = doc["mqttPass"] | cfg.mqttPass;
-        cfg.mqttCaCert = doc["mqttCaCert"] | cfg.mqttCaCert;
-        cfg.mqttUseSsl = doc["mqttUseSsl"] | cfg.mqttUseSsl;
-        cfg.apPassword = doc["apPassword"] | cfg.apPassword;
-        cfg.timezoneOffset = doc["tz"] | cfg.timezoneOffset;
+    bool corrected = false;
+    String value;
 
-        JsonArray arr = doc["channels"].as<JsonArray>();
-        int idx = 0;
-        for (JsonObject o : arr) {
-            if (idx >= MAX_CHANNELS) break;
-            cfg.channels[idx].name = o["name"] | cfg.channels[idx].name;
-            cfg.channels[idx].relayPin = o["rPin"] | -1;
-            cfg.channels[idx].buttonPin = o["bPin"] | -1;
-            cfg.channels[idx].activeLow = o["aLow"] | true;
-            cfg.channels[idx].state = o["state"] | false;
-            cfg.channels[idx].scheduleEnabled = o["sEn"] | false;
-            cfg.channels[idx].scheduleHourOn = o["hOn"] | 18;
-            cfg.channels[idx].scheduleMinOn = o["mOn"] | 0;
-            cfg.channels[idx].scheduleHourOff = o["hOff"] | 6;
-            cfg.channels[idx].scheduleMinOff = o["mOff"] | 0;
-            idx++;
+    value = doc["deviceId"].is<const char*>() ? doc["deviceId"].as<String>() : "";
+    if (isValidDeviceId(value)) cfg.deviceId = value;
+    else corrected = true;
+
+    value = doc["ssid1"].is<const char*>() ? doc["ssid1"].as<String>() : "";
+    if (value.length() <= 32) cfg.ssid1 = value;
+    else corrected = true;
+    value = doc["pass1"].is<const char*>() ? doc["pass1"].as<String>() : "";
+    if (isValidWifiPassword(value)) cfg.pass1 = value;
+    else corrected = true;
+
+    value = doc["ssid2"].is<const char*>() ? doc["ssid2"].as<String>() : "";
+    if (value.length() <= 32) cfg.ssid2 = value;
+    else corrected = true;
+    value = doc["pass2"].is<const char*>() ? doc["pass2"].as<String>() : "";
+    if (isValidWifiPassword(value)) cfg.pass2 = value;
+    else corrected = true;
+
+    value = doc["mqttHost"].is<const char*>() ? doc["mqttHost"].as<String>() : "";
+    if (value.length() <= 253) cfg.mqttHost = value;
+    else corrected = true;
+    if (doc["mqttPort"].is<int>() && doc["mqttPort"].as<int>() >= 1 &&
+        doc["mqttPort"].as<int>() <= 65535) cfg.mqttPort = static_cast<uint16_t>(doc["mqttPort"].as<int>());
+    else corrected = true;
+
+    value = doc["mqttPath"].is<const char*>() ? doc["mqttPath"].as<String>() : "";
+    if (value.length() > 0 && value.length() <= 128 && value[0] == '/') cfg.mqttPath = value;
+    else corrected = true;
+    value = doc["mqttUser"].is<const char*>() ? doc["mqttUser"].as<String>() : "";
+    if (value.length() <= 128) cfg.mqttUser = value;
+    else corrected = true;
+    value = doc["mqttPass"].is<const char*>() ? doc["mqttPass"].as<String>() : "";
+    if (value.length() <= 128) cfg.mqttPass = value;
+    else corrected = true;
+    value = doc["mqttCaCert"].is<const char*>() ? doc["mqttCaCert"].as<String>() : "";
+    if (value.length() <= 6000 &&
+        (value.length() == 0 || (value.indexOf("-----BEGIN CERTIFICATE-----") >= 0 &&
+                                 value.indexOf("-----END CERTIFICATE-----") >= 0))) cfg.mqttCaCert = value;
+    else corrected = true;
+
+    if (doc["mqttUseSsl"].is<bool>()) cfg.mqttUseSsl = doc["mqttUseSsl"].as<bool>();
+    else corrected = true;
+    value = doc["apPassword"].is<const char*>() ? doc["apPassword"].as<String>() : "";
+    if (value.length() >= 8 && value.length() <= 63) cfg.apPassword = value;
+    else corrected = true;
+    if (doc["tz"].is<int>() && doc["tz"].as<int>() >= -12 && doc["tz"].as<int>() <= 14)
+        cfg.timezoneOffset = static_cast<int8_t>(doc["tz"].as<int>());
+    else corrected = true;
+
+    bool usedPins[64] = {false};
+    JsonArray channels = doc["channels"].as<JsonArray>();
+    if (channels.size() != MAX_CHANNELS) corrected = true;
+    for (int i = 0; i < MAX_CHANNELS; i++) {
+        JsonVariant channelValue = channels[i];
+        if (!channelValue.is<JsonObject>()) {
+            corrected = true;
+            continue;
         }
+        JsonObject channel = channelValue.as<JsonObject>();
+        value = channel["name"].is<const char*>() ? channel["name"].as<String>() : "";
+        if (value.length() > 0 && value.length() <= 32) cfg.channels[i].name = value;
+        else corrected = true;
+
+        if (!channel["rPin"].is<int>()) corrected = true;
+        int relayPin = channel["rPin"].is<int>() ? channel["rPin"].as<int>() : -1;
+        if (relayPin < 0 || relayPin >= 64 || !isSafeOutputPin(relayPin) || usedPins[relayPin]) {
+            if (relayPin != -1) corrected = true;
+            relayPin = -1;
+        } else usedPins[relayPin] = true;
+        cfg.channels[i].relayPin = static_cast<int8_t>(relayPin);
+
+        if (!channel["bPin"].is<int>()) corrected = true;
+        int buttonPin = channel["bPin"].is<int>() ? channel["bPin"].as<int>() : -1;
+        if (buttonPin < 0 || buttonPin >= 64 || !isSafeInputPin(buttonPin) || usedPins[buttonPin]) {
+            if (buttonPin != -1) corrected = true;
+            buttonPin = -1;
+        } else usedPins[buttonPin] = true;
+        cfg.channels[i].buttonPin = static_cast<int8_t>(buttonPin);
+
+        if (channel["aLow"].is<bool>()) cfg.channels[i].activeLow = channel["aLow"].as<bool>();
+        else corrected = true;
+        if (channel["state"].is<bool>()) cfg.channels[i].state = channel["state"].as<bool>();
+        else corrected = true;
+        if (channel["sEn"].is<bool>()) cfg.channels[i].scheduleEnabled = channel["sEn"].as<bool>();
+        else corrected = true;
+
+        int hOn = channel["hOn"].is<int>() ? channel["hOn"].as<int>() : -1;
+        int mOn = channel["mOn"].is<int>() ? channel["mOn"].as<int>() : -1;
+        int hOff = channel["hOff"].is<int>() ? channel["hOff"].as<int>() : -1;
+        int mOff = channel["mOff"].is<int>() ? channel["mOff"].as<int>() : -1;
+        if (hOn >= 0 && hOn <= 23) cfg.channels[i].scheduleHourOn = static_cast<uint8_t>(hOn);
+        else corrected = true;
+        if (mOn >= 0 && mOn <= 59) cfg.channels[i].scheduleMinOn = static_cast<uint8_t>(mOn);
+        else corrected = true;
+        if (hOff >= 0 && hOff <= 23) cfg.channels[i].scheduleHourOff = static_cast<uint8_t>(hOff);
+        else corrected = true;
+        if (mOff >= 0 && mOff <= 59) cfg.channels[i].scheduleMinOff = static_cast<uint8_t>(mOff);
+        else corrected = true;
+    }
+
+    const String backupPath = String(CONFIG_FILE) + ".bak";
+    if (LittleFS.exists(backupPath)) LittleFS.remove(backupPath);
+    if (corrected && storageReady) {
+        Serial.println("Configuration contained invalid fields; safe defaults applied and saved.");
+        if (!saveConfig()) Serial.println("ERROR: Could not save sanitized configuration.");
+    }
 }
-
 void publishChannelState(uint8_t idx) {
     if (!mqtt.connected()) return;
     String topic = "mhome/" + cfg.deviceId + "/ch/" + String(idx + 1) + "/state";
@@ -470,18 +600,9 @@ void setupWebUI() {
             return;
         }
         String newDeviceId = doc["deviceId"].as<String>();
-        if (newDeviceId.length() < 1 || newDeviceId.length() > 26) {
+        if (!isValidDeviceId(newDeviceId)) {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_device_id\"}");
             return;
-        }
-        for (size_t i = 0; i < newDeviceId.length(); i++) {
-            char c = newDeviceId[i];
-            bool allowed = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                           (c >= '0' && c <= '9') || c == '-' || c == '_';
-            if (!allowed) {
-                server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_device_id\"}");
-                return;
-            }
         }
         if (!doc["ssid1"].is<const char*>() || !doc["ssid2"].is<const char*>() ||
             !doc["mqttHost"].is<const char*>() || !doc["mqttPath"].is<const char*>() ||
@@ -496,13 +617,21 @@ void setupWebUI() {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_wifi_ssid_length\"}");
             return;
         }
-        // Blank secret fields retain the current values; GET never exposes them.
+        // Blank password inputs retain existing secrets. An empty CA explicitly clears it.
         if (!doc["pass1"].is<const char*>() || String((const char*)doc["pass1"]).length() == 0) doc["pass1"] = cfg.pass1;
         if (!doc["pass2"].is<const char*>() || String((const char*)doc["pass2"]).length() == 0) doc["pass2"] = cfg.pass2;
         if (!doc["mqttPass"].is<const char*>() || String((const char*)doc["mqttPass"]).length() == 0) doc["mqttPass"] = cfg.mqttPass;
-        if (!doc["mqttCaCert"].is<const char*>() || String((const char*)doc["mqttCaCert"]).length() == 0) doc["mqttCaCert"] = cfg.mqttCaCert;
         if (!doc["apPassword"].is<const char*>() || String((const char*)doc["apPassword"]).length() == 0) doc["apPassword"] = cfg.apPassword;
-        String caCert = doc["mqttCaCert"] | "";
+        if (!doc["mqttCaCert"].is<const char*>()) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_mqtt_ca_certificate\"}");
+            return;
+        }
+        if (!isValidWifiPassword(doc["pass1"].as<String>()) ||
+            !isValidWifiPassword(doc["pass2"].as<String>())) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_wifi_password\"}");
+            return;
+        }
+        String caCert = doc["mqttCaCert"].as<String>();
         if (caCert.length() > 6000 || (caCert.length() > 0 &&
             (caCert.indexOf("-----BEGIN CERTIFICATE-----") < 0 ||
              caCert.indexOf("-----END CERTIFICATE-----") < 0))) {
