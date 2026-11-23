@@ -98,6 +98,36 @@ unsigned long lastBtnDebounce[MAX_CHANNELS] = {0};
 bool lastBtnReading[MAX_CHANNELS];
 time_t lastCheckedMinute = 0;
 void startFallbackAp();
+void disconnectStation();
+
+#if defined(ESP32)
+void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+    switch (event) {
+        case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+            Serial.println("Wi-Fi event: station associated; waiting for DHCP IP.");
+            break;
+        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+            Serial.print("Wi-Fi event: station received IP ");
+            Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
+            break;
+        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+            Serial.print("Wi-Fi event: station disconnected, reason=");
+            Serial.println(info.wifi_sta_disconnected.reason);
+            break;
+        case ARDUINO_EVENT_WIFI_STA_LOST_IP:
+            Serial.println("Wi-Fi event: station lost its IP address.");
+            break;
+        case ARDUINO_EVENT_WIFI_AP_START:
+            Serial.println("Wi-Fi event: fallback AP started.");
+            break;
+        case ARDUINO_EVENT_WIFI_AP_STOP:
+            Serial.println("Wi-Fi event: fallback AP stopped.");
+            break;
+        default:
+            break;
+    }
+}
+#endif
 
 String makeDefaultApPassword() {
     // Deliberately simple setup password; users should change it in WebUI.
@@ -442,25 +472,31 @@ void setupWebUI() {
         const String oldPass1 = cfg.pass1;
         const String oldSsid2 = cfg.ssid2;
         const String oldPass2 = cfg.pass2;
+        const String oldDeviceId = cfg.deviceId;
+        const String oldApPassword = cfg.apPassword;
         loadConfig();
         applyHardwarePins();
-        const bool restartAp = fallbackApActive;
+        const bool restartAp = fallbackApActive &&
+                               (oldDeviceId != cfg.deviceId || oldApPassword != cfg.apPassword);
         const bool restartWifi = oldSsid1 != cfg.ssid1 || oldPass1 != cfg.pass1 ||
                                  oldSsid2 != cfg.ssid2 || oldPass2 != cfg.pass2;
+        Serial.printf("Config saved: restartWifi=%s, restartAp=%s\n",
+                      restartWifi ? "yes" : "no", restartAp ? "yes" : "no");
         mqtt.disconnect();
         wsClient.disconnect();
         wsConfigured = false;
         tlsConfigWarningShown = false;
         server.send(200, "application/json", "{\"ok\":true}");
         if (restartWifi) {
-            WiFi.disconnect(false);
+            Serial.println("Wi-Fi credentials changed; keeping fallback AP active during STA reconnect.");
+            disconnectStation();
             wifiAttemptActive = false;
             wifiAttemptSecondary = true;
             wifiWasConnected = false;
             lastWifiCheck = millis() - 3000;
         }
         if (restartAp) {
-            delay(500);
+            Serial.println("AP identity/password changed; restarting fallback AP.");
             WiFi.softAPdisconnect(false);
             fallbackApActive = false;
             startFallbackAp();
@@ -488,6 +524,7 @@ void startFallbackAp() {
     fallbackApActive = WiFi.softAP(apName.c_str(), cfg.apPassword.c_str());
     if (fallbackApActive) {
         Serial.print("Fallback AP started: "); Serial.println(apName);
+        Serial.print("Fallback AP IP: "); Serial.println(WiFi.softAPIP());
     } else {
         Serial.println("ERROR: Failed to start fallback AP.");
     }
@@ -495,9 +532,18 @@ void startFallbackAp() {
 
 void stopFallbackAp() {
     if (!fallbackApActive) return;
+    Serial.println("Fallback AP stopped after station connection.");
     WiFi.softAPdisconnect(false);
     WiFi.mode(WIFI_STA);
     fallbackApActive = false;
+}
+
+void disconnectStation() {
+#if defined(ESP32)
+    WiFi.disconnect(false, false);
+#else
+    WiFi.disconnect(false);
+#endif
 }
 
 void beginWifiAttempt(bool secondary) {
@@ -507,7 +553,11 @@ void beginWifiAttempt(bool secondary) {
         wifiAttemptActive = false;
         return;
     }
-    WiFi.disconnect(false);
+    disconnectStation();
+    Serial.print("Wi-Fi attempt (");
+    Serial.print(secondary ? "secondary" : "primary");
+    Serial.print("): SSID=");
+    Serial.println(ssid);
     WiFi.begin(ssid.c_str(), pass.c_str());
     wifiAttemptSecondary = secondary;
     wifiAttemptStartedAt = millis();
@@ -524,6 +574,12 @@ void ensureWifi() {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
+        if (!wifiWasConnected) {
+            Serial.print("Wi-Fi connected: SSID=");
+            Serial.print(WiFi.SSID());
+            Serial.print(", IP=");
+            Serial.println(WiFi.localIP());
+        }
         wifiWasConnected = true;
         wifiAttemptActive = false;
         stopFallbackAp();
@@ -646,6 +702,9 @@ void checkSchedules() {
 
 void setup() {
     Serial.begin(115200);
+#if defined(ESP32)
+    WiFi.onEvent(onWifiEvent);
+#endif
     storageReady = LittleFS.begin();
     if (!storageReady) {
         Serial.println("ERROR: LittleFS mount failed; loading defaults.");
