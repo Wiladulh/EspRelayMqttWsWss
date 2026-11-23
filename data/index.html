@@ -24,9 +24,9 @@
     <div class="grid">
       <div><label>Device ID (1–26: huruf, angka, - atau _)</label><input id="deviceId" maxlength="26" pattern="[A-Za-z0-9_-]{1,26}" required></div>
       <div><label>SSID Utama</label><input id="ssid1"></div>
-      <div><label>Pass Utama</label><input id="pass1" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
+      <div><label>Pass Utama</label><input id="pass1" type="password" autocomplete="new-password" placeholder="Kosong = tetap"><label><input id="clearPass1" type="checkbox"> Gunakan Wi-Fi terbuka (hapus password)</label></div>
       <div><label>SSID Cadangan</label><input id="ssid2"></div>
-      <div><label>Pass Cadangan</label><input id="pass2" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
+      <div><label>Pass Cadangan</label><input id="pass2" type="password" autocomplete="new-password" placeholder="Kosong = tetap"><label><input id="clearPass2" type="checkbox"> Gunakan Wi-Fi terbuka (hapus password)</label></div>
       <div><label>MQTT WSS Host</label><input id="mqttHost"></div>
       <div><label>Port</label><input id="mqttPort" type="number"></div>
       <div><label>Path</label><input id="mqttPath"></div>
@@ -79,6 +79,8 @@ async function loadCfg() {
   ['deviceId','ssid1','ssid2','mqttHost','mqttPort','mqttPath','mqttUser','tz','mqttCaCert'].forEach(k => {
     document.getElementById(k).value = cfg[k] ?? '';
   });
+  document.getElementById('clearPass1').checked = false;
+  document.getElementById('clearPass2').checked = false;
   ['pass1','pass2','mqttPass','apPassword'].forEach(k => {
     const input = document.getElementById(k);
     input.value = '';
@@ -147,6 +149,8 @@ async function saveCfg() {
     }
   }
   ['deviceId','ssid1','ssid2','mqttHost','mqttPath','mqttUser','pass1','pass2','mqttPass','mqttCaCert','apPassword'].forEach(k => cfg[k] = document.getElementById(k).value);
+  cfg.clearPass1 = document.getElementById('clearPass1').checked;
+  cfg.clearPass2 = document.getElementById('clearPass2').checked;
   cfg.mqttPort = Number(document.getElementById('mqttPort').value);
   cfg.tz = Number(document.getElementById('tz').value);
   cfg.mqttUseSsl = document.getElementById('mqttUseSsl').checked;
