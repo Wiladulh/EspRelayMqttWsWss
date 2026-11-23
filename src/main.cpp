@@ -637,9 +637,12 @@ void setupWebUI() {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_wifi_ssid_length\"}");
             return;
         }
-        // Blank password inputs retain existing secrets. An empty CA explicitly clears it.
-        if (!doc["pass1"].is<const char*>() || String((const char*)doc["pass1"]).length() == 0) doc["pass1"] = cfg.pass1;
-        if (!doc["pass2"].is<const char*>() || String((const char*)doc["pass2"]).length() == 0) doc["pass2"] = cfg.pass2;
+        // Blank password inputs retain existing secrets unless the open-network flag is explicit.
+        // An empty CA explicitly clears the trust anchor.
+        if ((doc["clearPass1"].is<bool>() && doc["clearPass1"].as<bool>())) doc["pass1"] = "";
+        else if (!doc["pass1"].is<const char*>() || String((const char*)doc["pass1"]).length() == 0) doc["pass1"] = cfg.pass1;
+        if ((doc["clearPass2"].is<bool>() && doc["clearPass2"].as<bool>())) doc["pass2"] = "";
+        else if (!doc["pass2"].is<const char*>() || String((const char*)doc["pass2"]).length() == 0) doc["pass2"] = cfg.pass2;
         if (!doc["mqttPass"].is<const char*>() || String((const char*)doc["mqttPass"]).length() == 0) doc["mqttPass"] = cfg.mqttPass;
         if (!doc["apPassword"].is<const char*>() || String((const char*)doc["apPassword"]).length() == 0) doc["apPassword"] = cfg.apPassword;
         if (!doc["mqttCaCert"].is<const char*>()) {
