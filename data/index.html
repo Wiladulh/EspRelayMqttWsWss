@@ -8,7 +8,8 @@
   body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 16px; }
   .card { background: #1e293b; border-radius: 10px; padding: 16px; margin-bottom: 16px; border: 1px solid #334155; }
   h2 { margin-top: 0; font-size: 1.1rem; color: #38bdf8; }
-  input, select { background: #0f172a; color: #f8fafc; border: 1px solid #475569; padding: 6px 8px; border-radius: 6px; width: 100%; box-sizing: border-box; }
+  input, select, textarea { background: #0f172a; color: #f8fafc; border: 1px solid #475569; padding: 6px 8px; border-radius: 6px; width: 100%; box-sizing: border-box; }
+  textarea { min-height: 130px; font: 0.78rem ui-monospace, monospace; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
   button { background: #0284c7; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
   button.on { background: #16a34a; }
@@ -23,13 +24,20 @@
     <div class="grid">
       <div><label>Device ID</label><input id="deviceId"></div>
       <div><label>SSID Utama</label><input id="ssid1"></div>
-      <div><label>Pass Utama</label><input id="pass1" type="password"></div>
+      <div><label>Pass Utama</label><input id="pass1" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
       <div><label>SSID Cadangan</label><input id="ssid2"></div>
-      <div><label>Pass Cadangan</label><input id="pass2" type="password"></div>
+      <div><label>Pass Cadangan</label><input id="pass2" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
       <div><label>MQTT WSS Host</label><input id="mqttHost"></div>
       <div><label>Port</label><input id="mqttPort" type="number"></div>
       <div><label>Path</label><input id="mqttPath"></div>
+      <div><label>MQTT Username</label><input id="mqttUser"></div>
+      <div><label>MQTT Password</label><input id="mqttPass" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
+      <div style="grid-column:1/-1"><label>MQTT TLS CA Certificate (PEM, wajib untuk WSS)</label><textarea id="mqttCaCert" spellcheck="false" placeholder="Tempel sertifikat CA broker di sini. Tanpa CA, koneksi WSS akan ditolak."></textarea></div>
+      <div><label>Password AP Fallback (min. 8 karakter)</label><input id="apPassword" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
+      <div><label>Gunakan TLS/WSS</label><input id="mqttUseSsl" type="checkbox"></div>
       <div><label>Timezone (UTC+)</label><input id="tz" type="number"></div>
+      <div><label>Profil Board</label><input id="boardProfile" readonly></div>
+      <div><label>GPIO aman untuk relay/tombol</label><input id="safeGpioPins" readonly></div>
     </div>
   </div>
 
@@ -49,41 +57,79 @@
 
 <script>
 let cfg = {};
+function cell(row, text) {
+  const td = document.createElement('td');
+  if (text !== undefined) td.textContent = text;
+  row.appendChild(td);
+  return td;
+}
+function input(td, type, value, update) {
+  const el = document.createElement('input');
+  el.type = type;
+  if (type === 'checkbox') el.checked = Boolean(value);
+  else el.value = value ?? '';
+  el.addEventListener('change', () => update(el));
+  td.appendChild(el);
+}
 async function loadCfg() {
   const res = await fetch('/api/config');
+  if (!res.ok) throw new Error('Gagal membaca konfigurasi');
   cfg = await res.json();
-  ['deviceId','ssid1','pass1','ssid2','pass2','mqttHost','mqttPort','mqttPath','tz'].forEach(k => {
+  ['deviceId','ssid1','ssid2','mqttHost','mqttPort','mqttPath','mqttUser','tz','mqttCaCert'].forEach(k => {
     document.getElementById(k).value = cfg[k] ?? '';
   });
+  ['pass1','pass2','mqttPass','apPassword'].forEach(k => {
+    const input = document.getElementById(k);
+    input.value = '';
+    input.placeholder = cfg[k + 'Set'] ? 'Tersimpan — kosong = tetap' : 'Belum diatur';
+  });
+  document.getElementById('boardProfile').value = cfg.boardProfile || 'Unknown';
+  document.getElementById('safeGpioPins').value = cfg.safeGpioPins || 'Tidak tersedia';
+  document.getElementById('mqttUseSsl').checked = Boolean(cfg.mqttUseSsl);
   const tb = document.getElementById('chBody');
-  tb.innerHTML = '';
+  tb.replaceChildren();
   (cfg.channels || []).forEach((c, idx) => {
-    tb.innerHTML += `<tr>
-      <td>${c.id}</td>
-      <td><input value="${c.name}" onchange="cfg.channels[${idx}].name=this.value"></td>
-      <td><input type="number" value="${c.rPin}" onchange="cfg.channels[${idx}].rPin=+this.value"></td>
-      <td><input type="number" value="${c.bPin}" onchange="cfg.channels[${idx}].bPin=+this.value"></td>
-      <td><input type="checkbox" ${c.aLow?'checked':''} onchange="cfg.channels[${idx}].aLow=this.checked"></td>
-      <td><input type="checkbox" ${c.sEn?'checked':''} onchange="cfg.channels[${idx}].sEn=this.checked"></td>
-      <td><input type="time" value="${String(c.hOn).padStart(2,'0')}:${String(c.mOn).padStart(2,'0')}" onchange="let p=this.value.split(':');cfg.channels[${idx}].hOn=+p[0];cfg.channels[${idx}].mOn=+p[1]"></td>
-      <td><input type="time" value="${String(c.hOff).padStart(2,'0')}:${String(c.mOff).padStart(2,'0')}" onchange="let p=this.value.split(':');cfg.channels[${idx}].hOff=+p[0];cfg.channels[${idx}].mOff=+p[1]"></td>
-      <td><button class="${c.state?'on':'off'}" onclick="toggleCh(${c.id})">${c.state?'ON':'OFF'}</button></td>
-    </tr>`;
+    const tr = document.createElement('tr');
+    cell(tr, c.id);
+    input(cell(tr), 'text', c.name, el => cfg.channels[idx].name = el.value);
+    input(cell(tr), 'number', c.rPin, el => cfg.channels[idx].rPin = Number(el.value));
+    input(cell(tr), 'number', c.bPin, el => cfg.channels[idx].bPin = Number(el.value));
+    input(cell(tr), 'checkbox', c.aLow, el => cfg.channels[idx].aLow = el.checked);
+    input(cell(tr), 'checkbox', c.sEn, el => cfg.channels[idx].sEn = el.checked);
+    input(cell(tr), 'time', String(c.hOn).padStart(2,'0') + ':' + String(c.mOn).padStart(2,'0'), el => {
+      const [hour, minute] = el.value.split(':').map(Number);
+      cfg.channels[idx].hOn = hour; cfg.channels[idx].mOn = minute;
+    });
+    input(cell(tr), 'time', String(c.hOff).padStart(2,'0') + ':' + String(c.mOff).padStart(2,'0'), el => {
+      const [hour, minute] = el.value.split(':').map(Number);
+      cfg.channels[idx].hOff = hour; cfg.channels[idx].mOff = minute;
+    });
+    const controls = cell(tr);
+    const button = document.createElement('button');
+    button.className = c.state ? 'on' : 'off';
+    button.textContent = c.state ? 'ON' : 'OFF';
+    button.addEventListener('click', () => toggleCh(c.id));
+    controls.appendChild(button);
+    tb.appendChild(tr);
   });
 }
 async function toggleCh(ch) {
-  await fetch('/api/toggle?ch=' + ch, {method:'POST'});
-  loadCfg();
+  const res = await fetch('/api/toggle?ch=' + encodeURIComponent(ch), {method:'POST'});
+  if (!res.ok) { alert('Gagal mengubah relay'); return; }
+  await loadCfg();
 }
 async function saveCfg() {
-  ['deviceId','ssid1','pass1','ssid2','pass2','mqttHost','mqttPath'].forEach(k => cfg[k] = document.getElementById(k).value);
-  cfg.mqttPort = +document.getElementById('mqttPort').value;
-  cfg.tz = +document.getElementById('tz').value;
-  await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg)});
+  ['deviceId','ssid1','ssid2','mqttHost','mqttPath','mqttUser','pass1','pass2','mqttPass','mqttCaCert','apPassword'].forEach(k => cfg[k] = document.getElementById(k).value);
+  cfg.mqttPort = Number(document.getElementById('mqttPort').value);
+  cfg.tz = Number(document.getElementById('tz').value);
+  cfg.mqttUseSsl = document.getElementById('mqttUseSsl').checked;
+  const res = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg)});
+  const result = await res.json();
+  if (!res.ok || !result.ok) { alert('Konfigurasi ditolak: ' + (result.error || 'kesalahan tidak diketahui')); return; }
   alert('Tersimpan dan diterapkan!');
-  loadCfg();
+  await loadCfg();
 }
-loadCfg();
+loadCfg().catch(err => alert(err.message));
 </script>
 </body>
 </html>

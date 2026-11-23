@@ -1,0 +1,41 @@
+name: PlatformIO Build Matrix
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - esp8266_nodemcu
+          - esp32_devkit
+          - esp32s3_n16r8
+          - esp32c3_supermini
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install PlatformIO
+        run: python -m pip install --upgrade platformio
+      - name: Build firmware
+        run: pio run -e ${{ matrix.environment }}
+
+      - name: Upload ESP32 DevKit firmware and partition table
+        if: matrix.environment == 'esp32_devkit'
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32-devkit-firmware
+          path: |
+            .pio/build/esp32_devkit/firmware.bin
+            .pio/build/esp32_devkit/partitions.bin
+          if-no-files-found: error
+          retention-days: 14

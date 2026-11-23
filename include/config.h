@@ -29,6 +29,8 @@ struct DeviceConfig {
     String mqttPath;
     String mqttUser;
     String mqttPass;
+    String mqttCaCert;
+    String apPassword;
     bool mqttUseSsl;
     int8_t timezoneOffset;
     ChannelMap channels[MAX_CHANNELS];
