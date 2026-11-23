@@ -7,14 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: ESP32 board to build
+        description: Active ESP32 board to build
         required: true
         default: all
         type: choice
         options:
           - all
           - esp32_devkit
-          - esp32s3_n16r8
           - esp32c3_supermini
 
 jobs:
@@ -23,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.target != 'all' && format('["{0}"]', inputs.target) || '["esp32_devkit","esp32s3_n16r8","esp32c3_supermini"]') }}
+        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.target != 'all' && format('["{0}"]', inputs.target) || '["esp32_devkit","esp32c3_supermini"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -57,13 +56,13 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload firmware and LittleFS for other boards
-        if: matrix.environment != 'esp32_devkit'
+      - name: Upload ESP32-C3 firmware and LittleFS
+        if: matrix.environment == 'esp32c3_supermini'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.environment }}-firmware-littlefs
+          name: esp32c3_supermini-firmware-littlefs
           path: |
-            .pio/build/${{ matrix.environment }}/firmware.bin
-            .pio/build/${{ matrix.environment }}/littlefs.bin
+            .pio/build/esp32c3_supermini/firmware.bin
+            .pio/build/esp32c3_supermini/littlefs.bin
           if-no-files-found: error
           retention-days: 14
