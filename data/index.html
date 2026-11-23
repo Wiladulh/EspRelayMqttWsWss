@@ -32,10 +32,10 @@
       <div><label>Path</label><input id="mqttPath"></div>
       <div><label>MQTT Username</label><input id="mqttUser"></div>
       <div><label>MQTT Password</label><input id="mqttPass" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
-      <div style="grid-column:1/-1"><label>MQTT TLS CA Certificate (PEM; opsional ESP32, wajib ESP8266)</label><textarea id="mqttCaCert" spellcheck="false" placeholder="Tempel CA broker untuk verifikasi sertifikat. ESP32-S3/C3 tetap dapat konek tanpa CA, tetapi sertifikat server tidak diverifikasi."></textarea></div>
+      <div style="grid-column:1/-1"><label>MQTT TLS CA Certificate (PEM; opsional ESP32, wajib ESP8266)</label><textarea id="mqttCaCert" spellcheck="false" placeholder="Tempel CA broker untuk verifikasi sertifikat. Kosongkan kolom ini untuk menghapus CA. ESP32-S3/C3 tetap dapat konek tanpa CA, tetapi sertifikat server tidak diverifikasi."></textarea></div>
       <div><label>Password AP Fallback (min. 8 karakter)</label><input id="apPassword" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
       <div><label>Gunakan TLS/WSS</label><input id="mqttUseSsl" type="checkbox"></div>
-      <div><label>Timezone (UTC+)</label><input id="tz" type="number"></div>
+      <div><label>Timezone (UTC+)</label><input id="tz" type="number" min="-12" max="14" step="1" required></div>
       <div><label>Profil Board</label><input id="boardProfile" readonly></div>
       <div><label>GPIO aman untuk relay/tombol</label><input id="safeGpioPins" readonly></div>
     </div>
@@ -128,6 +128,13 @@ async function saveCfg() {
   if (!/^[A-Za-z0-9_-]{1,26}$/.test(deviceId)) {
     alert('Device ID harus 1–26 karakter: huruf, angka, tanda - atau _.');
     document.getElementById('deviceId').focus();
+    return;
+  }
+  const timezoneInput = document.getElementById('tz');
+  if (timezoneInput.value.trim() === '' || !Number.isInteger(Number(timezoneInput.value)) ||
+      Number(timezoneInput.value) < -12 || Number(timezoneInput.value) > 14) {
+    alert('Timezone wajib diisi dengan bilangan bulat antara UTC-12 dan UTC+14.');
+    timezoneInput.focus();
     return;
   }
   const timeInputs = document.querySelectorAll('#chBody input[type="time"]');
