@@ -35,6 +35,21 @@ jobs:
       - name: Build firmware
         run: pio run -e ${{ matrix.environment }}
 
+      - name: Verify linker diagnostics
+        run: |
+          test -s ".pio/build/${{ matrix.environment }}/firmware.map"
+          test -s ".pio/build/${{ matrix.environment }}/firmware.elf"
+
+      - name: Upload linker diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: linker-diagnostics-${{ matrix.environment }}
+          path: |
+            .pio/build/${{ matrix.environment }}/firmware.map
+            .pio/build/${{ matrix.environment }}/firmware.elf
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Validate WebUI JavaScript syntax
         run: |
           for file in data/assets/js/*.js; do
