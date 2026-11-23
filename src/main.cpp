@@ -793,6 +793,21 @@ void setupWebUI() {
         }
         doc.remove("clearPass1");
         doc.remove("clearPass2");
+        doc.remove("pass1Set");
+        doc.remove("pass2Set");
+        doc.remove("mqttPassSet");
+        doc.remove("apPasswordSet");
+        doc.remove("boardProfile");
+        doc.remove("safeGpioPins");
+
+        // Settings must never overwrite a relay state changed elsewhere after
+        // this browser loaded its form. Relay state is controlled only by the dashboard/API.
+        int channelIndex = 0;
+        for (JsonObject channel : doc["channels"].as<JsonArray>()) {
+            channel["state"] = cfg.channels[channelIndex].state;
+            channelIndex++;
+        }
+
         if (!writeConfigDocument(doc)) {
             server.send(500, "application/json", "{\"ok\":false,\"error\":\"storage_write_failed\"}");
             return;
