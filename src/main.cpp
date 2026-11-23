@@ -333,24 +333,36 @@ void loadConfig() {
     if (doc["ssid1"].is<const char*>()) {
         value = doc["ssid1"].as<String>();
         if (value.length() <= 32) cfg.ssid1 = value;
-        else corrected = true;
-    } else corrected = true;
+        else { cfg.ssid1 = ""; corrected = true; }
+    } else {
+        cfg.ssid1 = "";
+        corrected = true;
+    }
     if (doc["pass1"].is<const char*>()) {
         value = doc["pass1"].as<String>();
         if (isValidWifiPassword(value)) cfg.pass1 = value;
-        else corrected = true;
-    } else corrected = true;
+        else { cfg.pass1 = ""; corrected = true; }
+    } else {
+        cfg.pass1 = "";
+        corrected = true;
+    }
 
     if (doc["ssid2"].is<const char*>()) {
         value = doc["ssid2"].as<String>();
         if (value.length() <= 32) cfg.ssid2 = value;
-        else corrected = true;
-    } else corrected = true;
+        else { cfg.ssid2 = ""; corrected = true; }
+    } else {
+        cfg.ssid2 = "";
+        corrected = true;
+    }
     if (doc["pass2"].is<const char*>()) {
         value = doc["pass2"].as<String>();
         if (isValidWifiPassword(value)) cfg.pass2 = value;
-        else corrected = true;
-    } else corrected = true;
+        else { cfg.pass2 = ""; corrected = true; }
+    } else {
+        cfg.pass2 = "";
+        corrected = true;
+    }
 
     if (doc["mqttHost"].is<const char*>()) {
         value = doc["mqttHost"].as<String>();
@@ -558,38 +570,106 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
     }
 }
 
+void serveUiAsset(const char* path, const char* contentType) {
+    File file = LittleFS.open(path, "r");
+    if (!file) {
+        server.send(404, "text/plain", "WebUI asset not found.");
+        return;
+    }
+    server.sendHeader("Cache-Control", "no-cache");
+    server.streamFile(file, contentType);
+    file.close();
+}
+
 void setupWebUI() {
     server.on("/", HTTP_GET, []() {
-        File f = LittleFS.open("/index.html", "r");
-        if (f) {
-            server.streamFile(f, "text/html");
-            f.close();
+        File file = LittleFS.open("/index.html", "r");
+        if (file) {
+            server.sendHeader("Cache-Control", "no-cache");
+            server.streamFile(file, "text/html");
+            file.close();
         } else {
-            server.send(200, "text/plain", "Upload LittleFS data folder for WebUI.");
+            server.send(503, "text/plain", "WebUI filesystem is unavailable.");
         }
+    });
+
+    server.on("/assets/css/app.css", HTTP_GET, []() {
+        serveUiAsset("/assets/css/app.css", "text/css");
+    });
+    server.on("/assets/js/api.js", HTTP_GET, []() {
+        serveUiAsset("/assets/js/api.js", "application/javascript");
+    });
+    server.on("/assets/js/dashboard.js", HTTP_GET, []() {
+        serveUiAsset("/assets/js/dashboard.js", "application/javascript");
+    });
+    server.on("/assets/js/settings.js", HTTP_GET, []() {
+        serveUiAsset("/assets/js/settings.js", "application/javascript");
+    });
+    server.on("/assets/js/app.js", HTTP_GET, []() {
+        serveUiAsset("/assets/js/app.js", "application/javascript");
     });
 
     server.on("/api/config", HTTP_GET, []() {
         JsonDocument doc;
-        File f = LittleFS.open(CONFIG_FILE, "r");
-        if (f) {
-            DeserializationError error = deserializeJson(doc, f);
-            f.close();
-            if (error) doc.clear();
+        doc["deviceId"] = cfg.deviceId;
+        doc["ssid1"] = cfg.ssid1;
+        doc["ssid2"] = cfg.ssid2;
+        doc["mqttHost"] = cfg.mqttHost;
+        doc["mqttPort"] = cfg.mqttPort;
+        doc["mqttPath"] = cfg.mqttPath;
+        doc["mqttUser"] = cfg.mqttUser;
+        doc["mqttCaCert"] = cfg.mqttCaCert;
+        doc["mqttUseSsl"] = cfg.mqttUseSsl;
+        doc["tz"] = cfg.timezoneOffset;
+        doc["pass1Set"] = cfg.pass1.length() > 0;
+        doc["pass2Set"] = cfg.pass2.length() > 0;
+        doc["mqttPassSet"] = cfg.mqttPass.length() > 0;
+        doc["apPasswordSet"] = cfg.apPassword.length() >= 8;
+        doc["boardProfile"] = boardPinProfile();
+        doc["safeGpioPins"] = boardSafeGpioList();
+
+        JsonArray channels = doc["channels"].to<JsonArray>();
+        for (int i = 0; i < MAX_CHANNELS; i++) {
+            JsonObject channel = channels.add<JsonObject>();
+            channel["id"] = cfg.channels[i].id;
+            channel["name"] = cfg.channels[i].name;
+            channel["rPin"] = cfg.channels[i].relayPin;
+            channel["bPin"] = cfg.channels[i].buttonPin;
+            channel["aLow"] = cfg.channels[i].activeLow;
+            channel["state"] = cfg.channels[i].state;
+            channel["sEn"] = cfg.channels[i].scheduleEnabled;
+            channel["hOn"] = cfg.channels[i].scheduleHourOn;
+            channel["mOn"] = cfg.channels[i].scheduleMinOn;
+            channel["hOff"] = cfg.channels[i].scheduleHourOff;
+            channel["mOff"] = cfg.channels[i].scheduleMinOff;
         }
-        if (!doc.is<JsonObject>()) doc.to<JsonObject>();
-        JsonObject root = doc.as<JsonObject>();
-        root.remove("pass1");
-        root.remove("pass2");
-        root.remove("mqttPass");
-        root.remove("apPassword");
-        root["mqttCaCert"] = cfg.mqttCaCert;
-        root["pass1Set"] = cfg.pass1.length() > 0;
-        root["pass2Set"] = cfg.pass2.length() > 0;
-        root["mqttPassSet"] = cfg.mqttPass.length() > 0;
-        root["apPasswordSet"] = cfg.apPassword.length() >= 8;
-        root["boardProfile"] = boardPinProfile();
-        root["safeGpioPins"] = boardSafeGpioList();
+
+        String response;
+        serializeJson(doc, response);
+        server.send(200, "application/json", response);
+    });
+
+    server.on("/api/status", HTTP_GET, []() {
+        JsonDocument doc;
+        const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+        doc["ok"] = true;
+        doc["deviceId"] = cfg.deviceId;
+        doc["wifiConnected"] = wifiConnected;
+        doc["wifiSsid"] = wifiConnected ? WiFi.SSID() : "";
+        doc["wifiIp"] = wifiConnected ? WiFi.localIP().toString() : "";
+        doc["mqttConnected"] = mqtt.connected() && wsClient.isConnected();
+        doc["apActive"] = fallbackApActive;
+        doc["apIp"] = fallbackApActive ? WiFi.softAPIP().toString() : "";
+        doc["boardProfile"] = boardPinProfile();
+
+        JsonArray channels = doc["channels"].to<JsonArray>();
+        for (int i = 0; i < MAX_CHANNELS; i++) {
+            JsonObject channel = channels.add<JsonObject>();
+            channel["id"] = cfg.channels[i].id;
+            channel["name"] = cfg.channels[i].name;
+            channel["state"] = cfg.channels[i].state;
+        }
+
         String response;
         serializeJson(doc, response);
         server.send(200, "application/json", response);
@@ -725,6 +805,21 @@ void setupWebUI() {
         }
         doc.remove("clearPass1");
         doc.remove("clearPass2");
+        doc.remove("pass1Set");
+        doc.remove("pass2Set");
+        doc.remove("mqttPassSet");
+        doc.remove("apPasswordSet");
+        doc.remove("boardProfile");
+        doc.remove("safeGpioPins");
+
+        // Settings must never overwrite a relay state changed elsewhere after
+        // this browser loaded its form. Relay state is controlled only by the dashboard/API.
+        int channelIndex = 0;
+        for (JsonObject channel : doc["channels"].as<JsonArray>()) {
+            channel["state"] = cfg.channels[channelIndex].state;
+            channelIndex++;
+        }
+
         if (!writeConfigDocument(doc)) {
             server.send(500, "application/json", "{\"ok\":false,\"error\":\"storage_write_failed\"}");
             return;
@@ -771,13 +866,28 @@ void setupWebUI() {
     });
 
     server.on("/api/toggle", HTTP_POST, []() {
-        int ch = server.arg("ch").toInt() - 1;
-        if (ch >= 0 && ch < MAX_CHANNELS) {
-            setChannelState(ch, !cfg.channels[ch].state);
-            server.send(200, "application/json", "{\"ok\":true}");
-        } else {
-            server.send(400, "application/json", "{\"ok\":false}");
+        const String channelArg = server.arg("ch");
+        bool numeric = channelArg.length() > 0 && channelArg.length() <= 2;
+        for (size_t i = 0; i < channelArg.length(); i++) {
+            if (channelArg[i] < '0' || channelArg[i] > '9') numeric = false;
         }
+        const int ch = numeric ? channelArg.toInt() - 1 : -1;
+        const String requestedState = server.arg("state");
+        if (ch < 0 || ch >= MAX_CHANNELS ||
+            (requestedState.length() > 0 && requestedState != "0" && requestedState != "1")) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_channel_or_state\"}");
+            return;
+        }
+        const bool newState = requestedState.length() == 0
+            ? !cfg.channels[ch].state
+            : requestedState == "1";
+        setChannelState(ch, newState);
+        JsonDocument result;
+        result["ok"] = true;
+        result["state"] = cfg.channels[ch].state;
+        String response;
+        serializeJson(result, response);
+        server.send(200, "application/json", response);
     });
 
     server.begin();

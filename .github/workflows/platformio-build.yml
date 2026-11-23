@@ -5,6 +5,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      target:
+        description: Active ESP32 board to build
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - esp32_devkit
+          - esp32c3_supermini
 
 jobs:
   build:
@@ -12,11 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment:
-          - esp8266_nodemcu
-          - esp32_devkit
-          - esp32s3_n16r8
-          - esp32c3_supermini
+        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.target != 'all' && format('["{0}"]', inputs.target) || '["esp32_devkit","esp32c3_supermini"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -29,9 +35,14 @@ jobs:
       - name: Build firmware
         run: pio run -e ${{ matrix.environment }}
 
-      - name: Build ESP32 DevKit LittleFS image
-        if: matrix.environment == 'esp32_devkit'
-        run: pio run -e esp32_devkit -t buildfs
+      - name: Validate WebUI JavaScript syntax
+        run: |
+          for file in data/assets/js/*.js; do
+            node --check "$file"
+          done
+
+      - name: Build LittleFS image
+        run: pio run -e ${{ matrix.environment }} -t buildfs
 
       - name: Upload ESP32 DevKit flash images
         if: matrix.environment == 'esp32_devkit'
@@ -42,5 +53,16 @@ jobs:
             .pio/build/esp32_devkit/firmware.bin
             .pio/build/esp32_devkit/partitions.bin
             .pio/build/esp32_devkit/littlefs.bin
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload ESP32-C3 firmware and LittleFS
+        if: matrix.environment == 'esp32c3_supermini'
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32c3_supermini-firmware-littlefs
+          path: |
+            .pio/build/esp32c3_supermini/firmware.bin
+            .pio/build/esp32c3_supermini/littlefs.bin
           if-no-files-found: error
           retention-days: 14
