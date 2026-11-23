@@ -29,13 +29,18 @@ jobs:
       - name: Build firmware
         run: pio run -e ${{ matrix.environment }}
 
-      - name: Upload ESP32 DevKit firmware and partition table
+      - name: Build ESP32 DevKit LittleFS image
+        if: matrix.environment == 'esp32_devkit'
+        run: pio run -e esp32_devkit -t buildfs
+
+      - name: Upload ESP32 DevKit flash images
         if: matrix.environment == 'esp32_devkit'
         uses: actions/upload-artifact@v4
         with:
-          name: esp32-devkit-firmware
+          name: esp32-devkit-flash-images
           path: |
             .pio/build/esp32_devkit/firmware.bin
             .pio/build/esp32_devkit/partitions.bin
+            .pio/build/esp32_devkit/littlefs.bin
           if-no-files-found: error
           retention-days: 14
