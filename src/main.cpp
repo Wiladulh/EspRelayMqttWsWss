@@ -633,8 +633,16 @@ void setupWebUI() {
         }
         String newSsid1 = doc["ssid1"].as<String>();
         String newSsid2 = doc["ssid2"].as<String>();
+        String newMqttHost = doc["mqttHost"].as<String>();
+        String newMqttPath = doc["mqttPath"].as<String>();
+        String newMqttUser = doc["mqttUser"].as<String>();
         if (newSsid1.length() > 32 || newSsid2.length() > 32) {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_wifi_ssid_length\"}");
+            return;
+        }
+        if (newMqttHost.length() > 253 || newMqttPath.length() == 0 ||
+            newMqttPath.length() > 128 || newMqttPath[0] != '/' || newMqttUser.length() > 128) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_mqtt_endpoint\"}");
             return;
         }
         // Blank password inputs retain existing secrets unless the open-network flag is explicit.
@@ -711,6 +719,8 @@ void setupWebUI() {
                 usedPins[buttonPin] = true;
             }
         }
+        doc.remove("clearPass1");
+        doc.remove("clearPass2");
         if (!writeConfigDocument(doc)) {
             server.send(500, "application/json", "{\"ok\":false,\"error\":\"storage_write_failed\"}");
             return;
