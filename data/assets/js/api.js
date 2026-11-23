@@ -1,6 +1,6 @@
 (() => {
   async function request(url, options) {
-    const response = await fetch(url, options || {});
+    const response = await fetch(url, Object.assign({ cache: "no-store" }, options || {}));
     let payload = {};
     try { payload = await response.json(); } catch (_) {}
     if (!response.ok || payload.ok === false) {

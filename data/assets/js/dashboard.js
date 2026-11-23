@@ -99,8 +99,6 @@
   }
 
   function start() {
-    const button = document.getElementById("refreshDashboard");
-    button.addEventListener("click", refresh);
     refresh();
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(refresh, 5000);
