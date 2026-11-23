@@ -7,13 +7,12 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: Board to build and test
+        description: ESP32 board to build
         required: true
         default: all
         type: choice
         options:
           - all
-          - esp8266_nodemcu
           - esp32_devkit
           - esp32s3_n16r8
           - esp32c3_supermini
@@ -24,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.target != 'all' && format('["{0}"]', inputs.target) || '["esp8266_nodemcu","esp32_devkit","esp32s3_n16r8","esp32c3_supermini"]') }}
+        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.target != 'all' && format('["{0}"]', inputs.target) || '["esp32_devkit","esp32s3_n16r8","esp32c3_supermini"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
