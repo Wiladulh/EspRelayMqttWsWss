@@ -331,47 +331,67 @@ void loadConfig() {
     if (isValidDeviceId(value)) cfg.deviceId = value;
     else corrected = true;
 
-    value = doc["ssid1"].is<const char*>() ? doc["ssid1"].as<String>() : "";
-    if (value.length() <= 32) cfg.ssid1 = value;
-    else corrected = true;
-    value = doc["pass1"].is<const char*>() ? doc["pass1"].as<String>() : "";
-    if (isValidWifiPassword(value)) cfg.pass1 = value;
-    else corrected = true;
+    if (doc["ssid1"].is<const char*>()) {
+        value = doc["ssid1"].as<String>();
+        if (value.length() <= 32) cfg.ssid1 = value;
+        else corrected = true;
+    } else corrected = true;
+    if (doc["pass1"].is<const char*>()) {
+        value = doc["pass1"].as<String>();
+        if (isValidWifiPassword(value)) cfg.pass1 = value;
+        else corrected = true;
+    } else corrected = true;
 
-    value = doc["ssid2"].is<const char*>() ? doc["ssid2"].as<String>() : "";
-    if (value.length() <= 32) cfg.ssid2 = value;
-    else corrected = true;
-    value = doc["pass2"].is<const char*>() ? doc["pass2"].as<String>() : "";
-    if (isValidWifiPassword(value)) cfg.pass2 = value;
-    else corrected = true;
+    if (doc["ssid2"].is<const char*>()) {
+        value = doc["ssid2"].as<String>();
+        if (value.length() <= 32) cfg.ssid2 = value;
+        else corrected = true;
+    } else corrected = true;
+    if (doc["pass2"].is<const char*>()) {
+        value = doc["pass2"].as<String>();
+        if (isValidWifiPassword(value)) cfg.pass2 = value;
+        else corrected = true;
+    } else corrected = true;
 
-    value = doc["mqttHost"].is<const char*>() ? doc["mqttHost"].as<String>() : "";
-    if (value.length() <= 253) cfg.mqttHost = value;
-    else corrected = true;
+    if (doc["mqttHost"].is<const char*>()) {
+        value = doc["mqttHost"].as<String>();
+        if (value.length() <= 253) cfg.mqttHost = value;
+        else corrected = true;
+    } else corrected = true;
     if (doc["mqttPort"].is<int>() && doc["mqttPort"].as<int>() >= 1 &&
         doc["mqttPort"].as<int>() <= 65535) cfg.mqttPort = static_cast<uint16_t>(doc["mqttPort"].as<int>());
     else corrected = true;
 
-    value = doc["mqttPath"].is<const char*>() ? doc["mqttPath"].as<String>() : "";
-    if (value.length() > 0 && value.length() <= 128 && value[0] == '/') cfg.mqttPath = value;
-    else corrected = true;
-    value = doc["mqttUser"].is<const char*>() ? doc["mqttUser"].as<String>() : "";
-    if (value.length() <= 128) cfg.mqttUser = value;
-    else corrected = true;
-    value = doc["mqttPass"].is<const char*>() ? doc["mqttPass"].as<String>() : "";
-    if (value.length() <= 128) cfg.mqttPass = value;
-    else corrected = true;
-    value = doc["mqttCaCert"].is<const char*>() ? doc["mqttCaCert"].as<String>() : "";
-    if (value.length() <= 6000 &&
-        (value.length() == 0 || (value.indexOf("-----BEGIN CERTIFICATE-----") >= 0 &&
-                                 value.indexOf("-----END CERTIFICATE-----") >= 0))) cfg.mqttCaCert = value;
-    else corrected = true;
+    if (doc["mqttPath"].is<const char*>()) {
+        value = doc["mqttPath"].as<String>();
+        if (value.length() > 0 && value.length() <= 128 && value[0] == '/') cfg.mqttPath = value;
+        else corrected = true;
+    } else corrected = true;
+    if (doc["mqttUser"].is<const char*>()) {
+        value = doc["mqttUser"].as<String>();
+        if (value.length() <= 128) cfg.mqttUser = value;
+        else corrected = true;
+    } else corrected = true;
+    if (doc["mqttPass"].is<const char*>()) {
+        value = doc["mqttPass"].as<String>();
+        if (value.length() <= 128) cfg.mqttPass = value;
+        else corrected = true;
+    } else corrected = true;
+    if (doc["mqttCaCert"].is<const char*>()) {
+        value = doc["mqttCaCert"].as<String>();
+        if (value.length() <= 6000 &&
+            (value.length() == 0 || (value.indexOf("-----BEGIN CERTIFICATE-----") >= 0 &&
+                                     value.indexOf("-----END CERTIFICATE-----") >= 0))) cfg.mqttCaCert = value;
+        else corrected = true;
+    } else corrected = true;
 
     if (doc["mqttUseSsl"].is<bool>()) cfg.mqttUseSsl = doc["mqttUseSsl"].as<bool>();
     else corrected = true;
-    value = doc["apPassword"].is<const char*>() ? doc["apPassword"].as<String>() : "";
-    if (value.length() >= 8 && value.length() <= 63) cfg.apPassword = value;
-    else corrected = true;
+    if (doc["apPassword"].is<const char*>()) {
+        value = doc["apPassword"].as<String>();
+        if (value.length() >= 8 && value.length() <= 63) cfg.apPassword = value;
+        else corrected = true;
+    } else corrected = true;
     if (doc["tz"].is<int>() && doc["tz"].as<int>() >= -12 && doc["tz"].as<int>() <= 14)
         cfg.timezoneOffset = static_cast<int8_t>(doc["tz"].as<int>());
     else corrected = true;
