@@ -207,8 +207,7 @@ bool recoverConfigFile() {
 
     if (hasConfig && isJsonObjectFile(CONFIG_FILE)) {
         if (hasBackup && !LittleFS.remove(backupPath)) {
-            Serial.println("ERROR: Could not remove stale config backup; storage update stopped.");
-            return false;
+            Serial.println("WARNING: Valid config is available, but stale backup cleanup failed.");
         }
         return true;
     }
@@ -660,6 +659,11 @@ void setupWebUI() {
         if (!isValidWifiPassword(doc["pass1"].as<String>()) ||
             !isValidWifiPassword(doc["pass2"].as<String>())) {
             server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_wifi_password\"}");
+            return;
+        }
+        String mqttPassword = doc["mqttPass"].as<String>();
+        if (mqttPassword.length() > 128) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"mqtt_password_too_long\"}");
             return;
         }
         String caCert = doc["mqttCaCert"].as<String>();
