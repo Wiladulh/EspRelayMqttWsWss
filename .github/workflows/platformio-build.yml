@@ -29,9 +29,14 @@ jobs:
       - name: Build firmware
         run: pio run -e ${{ matrix.environment }}
 
-      - name: Build ESP32 DevKit LittleFS image
-        if: matrix.environment == 'esp32_devkit'
-        run: pio run -e esp32_devkit -t buildfs
+      - name: Validate WebUI JavaScript syntax
+        run: |
+          for file in data/assets/js/*.js; do
+            node --check "$file"
+          done
+
+      - name: Build LittleFS image
+        run: pio run -e ${{ matrix.environment }} -t buildfs
 
       - name: Upload ESP32 DevKit flash images
         if: matrix.environment == 'esp32_devkit'
@@ -42,5 +47,16 @@ jobs:
             .pio/build/esp32_devkit/firmware.bin
             .pio/build/esp32_devkit/partitions.bin
             .pio/build/esp32_devkit/littlefs.bin
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload firmware and LittleFS for other boards
+        if: matrix.environment != 'esp32_devkit'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.environment }}-firmware-littlefs
+          path: |
+            .pio/build/${{ matrix.environment }}/firmware.bin
+            .pio/build/${{ matrix.environment }}/littlefs.bin
           if-no-files-found: error
           retention-days: 14

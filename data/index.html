@@ -1,167 +1,160 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>M-Home Universal Relay Node</title>
-<style>
-  body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 16px; }
-  .card { background: #1e293b; border-radius: 10px; padding: 16px; margin-bottom: 16px; border: 1px solid #334155; }
-  h2 { margin-top: 0; font-size: 1.1rem; color: #38bdf8; }
-  input, select, textarea { background: #0f172a; color: #f8fafc; border: 1px solid #475569; padding: 6px 8px; border-radius: 6px; width: 100%; box-sizing: border-box; }
-  input[type="checkbox"] { width: auto; }
-  textarea { min-height: 130px; font: 0.78rem ui-monospace, monospace; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-  button { background: #0284c7; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-  button.on { background: #16a34a; }
-  button.off { background: #475569; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-  th, td { padding: 6px; border-bottom: 1px solid #334155; text-align: left; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1220">
+  <title>M-Home Relay Controller</title>
+  <link rel="stylesheet" href="/assets/css/app.css">
+  <script defer src="/assets/js/api.js"></script>
+  <script defer src="/assets/js/dashboard.js"></script>
+  <script defer src="/assets/js/settings.js"></script>
+  <script defer src="/assets/js/app.js"></script>
 </head>
 <body>
-  <div class="card">
-    <h2>M-Home Universal Node (10-CH GPIO & MQTT WSS)</h2>
-    <div class="grid">
-      <div><label>Device ID (1–26: huruf, angka, - atau _)</label><input id="deviceId" maxlength="26" pattern="[A-Za-z0-9_-]{1,26}" required></div>
-      <div><label>SSID Utama</label><input id="ssid1"></div>
-      <div><label>Pass Utama</label><input id="pass1" type="password" autocomplete="new-password" placeholder="Kosong = tetap"><label><input id="clearPass1" type="checkbox"> Gunakan Wi-Fi terbuka (hapus password)</label></div>
-      <div><label>SSID Cadangan</label><input id="ssid2"></div>
-      <div><label>Pass Cadangan</label><input id="pass2" type="password" autocomplete="new-password" placeholder="Kosong = tetap"><label><input id="clearPass2" type="checkbox"> Gunakan Wi-Fi terbuka (hapus password)</label></div>
-      <div><label>MQTT WSS Host</label><input id="mqttHost"></div>
-      <div><label>Port</label><input id="mqttPort" type="number"></div>
-      <div><label>Path</label><input id="mqttPath"></div>
-      <div><label>MQTT Username</label><input id="mqttUser"></div>
-      <div><label>MQTT Password</label><input id="mqttPass" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
-      <div style="grid-column:1/-1"><label>MQTT TLS CA Certificate (PEM; opsional ESP32, wajib ESP8266)</label><textarea id="mqttCaCert" spellcheck="false" placeholder="Tempel CA broker untuk verifikasi sertifikat. Kosongkan kolom ini untuk menghapus CA. ESP32-S3/C3 tetap dapat konek tanpa CA, tetapi sertifikat server tidak diverifikasi."></textarea></div>
-      <div><label>Password AP Fallback (min. 8 karakter)</label><input id="apPassword" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
-      <div><label>Gunakan TLS/WSS</label><input id="mqttUseSsl" type="checkbox"></div>
-      <div><label>Timezone (UTC+)</label><input id="tz" type="number" min="-12" max="14" step="1" required></div>
-      <div><label>Profil Board</label><input id="boardProfile" readonly></div>
-      <div><label>GPIO aman untuk relay/tombol</label><input id="safeGpioPins" readonly></div>
-    </div>
-  </div>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="M-Home Dashboard">
+        <span class="brand-mark">M</span>
+        <span><strong>M-Home</strong><small>Universal Relay Controller</small></span>
+      </a>
+      <div class="topbar-meta">
+        <span id="deviceLabel" class="device-label">Memuat perangkat…</span>
+        <span id="connectionBadge" class="status-badge status-pending"><i></i><span>Memeriksa koneksi</span></span>
+      </div>
+    </header>
 
-  <div class="card" style="overflow-x:auto;">
-    <h2>10-Channel GPIO & NTP Schedule Mapper</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>CH</th><th>Nama</th><th>Relay GPIO</th><th>Btn GPIO</th><th>Active Low</th><th>Jadwal</th><th>ON (HH:MM)</th><th>OFF (HH:MM)</th><th>Kontrol</th>
-        </tr>
-      </thead>
-      <tbody id="chBody"></tbody>
-    </table>
-    <br>
-    <button onclick="saveCfg()">Simpan & Terapkan Konfigurasi</button>
-  </div>
+    <nav class="main-nav" aria-label="Navigasi utama">
+      <button class="nav-tab is-active" type="button" data-view="dashboard" aria-selected="true">
+        <span class="nav-icon">⌂</span> Dashboard
+      </button>
+      <button class="nav-tab" type="button" data-view="settings" aria-selected="false">
+        <span class="nav-icon">⚙</span> Pengaturan
+      </button>
+    </nav>
 
-<script>
-let cfg = {};
-function cell(row, text) {
-  const td = document.createElement('td');
-  if (text !== undefined) td.textContent = text;
-  row.appendChild(td);
-  return td;
-}
-function input(td, type, value, update) {
-  const el = document.createElement('input');
-  el.type = type;
-  if (type === 'checkbox') el.checked = Boolean(value);
-  else if (type === 'number' && Number(value) < 0) el.value = '';
-  else el.value = value ?? '';
-  el.addEventListener('change', () => update(el));
-  td.appendChild(el);
-}
-async function loadCfg() {
-  const res = await fetch('/api/config');
-  if (!res.ok) throw new Error('Gagal membaca konfigurasi');
-  cfg = await res.json();
-  ['deviceId','ssid1','ssid2','mqttHost','mqttPort','mqttPath','mqttUser','tz','mqttCaCert'].forEach(k => {
-    document.getElementById(k).value = cfg[k] ?? '';
-  });
-  document.getElementById('clearPass1').checked = false;
-  document.getElementById('clearPass2').checked = false;
-  ['pass1','pass2','mqttPass','apPassword'].forEach(k => {
-    const input = document.getElementById(k);
-    input.value = '';
-    input.placeholder = cfg[k + 'Set'] ? 'Tersimpan — kosong = tetap' : 'Belum diatur';
-  });
-  document.getElementById('boardProfile').value = cfg.boardProfile || 'Unknown';
-  document.getElementById('safeGpioPins').value = cfg.safeGpioPins || 'Tidak tersedia';
-  document.getElementById('mqttUseSsl').checked = Boolean(cfg.mqttUseSsl);
-  const tb = document.getElementById('chBody');
-  tb.replaceChildren();
-  (cfg.channels || []).forEach((c, idx) => {
-    const tr = document.createElement('tr');
-    cell(tr, c.id);
-    input(cell(tr), 'text', c.name, el => cfg.channels[idx].name = el.value);
-    input(cell(tr), 'number', c.rPin, el => cfg.channels[idx].rPin = el.value === '' ? -1 : Number(el.value));
-    input(cell(tr), 'number', c.bPin, el => cfg.channels[idx].bPin = el.value === '' ? -1 : Number(el.value));
-    input(cell(tr), 'checkbox', c.aLow, el => cfg.channels[idx].aLow = el.checked);
-    input(cell(tr), 'checkbox', c.sEn, el => cfg.channels[idx].sEn = el.checked);
-    input(cell(tr), 'time', String(c.hOn).padStart(2,'0') + ':' + String(c.mOn).padStart(2,'0'), el => {
-      if (!el.value) { el.setCustomValidity('Waktu ON wajib diisi.'); return; }
-      el.setCustomValidity('');
-      const [hour, minute] = el.value.split(':').map(Number);
-      cfg.channels[idx].hOn = hour; cfg.channels[idx].mOn = minute;
-    });
-    input(cell(tr), 'time', String(c.hOff).padStart(2,'0') + ':' + String(c.mOff).padStart(2,'0'), el => {
-      if (!el.value) { el.setCustomValidity('Waktu OFF wajib diisi.'); return; }
-      el.setCustomValidity('');
-      const [hour, minute] = el.value.split(':').map(Number);
-      cfg.channels[idx].hOff = hour; cfg.channels[idx].mOff = minute;
-    });
-    const controls = cell(tr);
-    const button = document.createElement('button');
-    button.className = c.state ? 'on' : 'off';
-    button.textContent = c.state ? 'ON' : 'OFF';
-    button.addEventListener('click', () => toggleCh(c.id));
-    controls.appendChild(button);
-    tb.appendChild(tr);
-  });
-}
-async function toggleCh(ch) {
-  const res = await fetch('/api/toggle?ch=' + encodeURIComponent(ch), {method:'POST'});
-  if (!res.ok) { alert('Gagal mengubah relay'); return; }
-  await loadCfg();
-}
-async function saveCfg() {
-  const deviceId = document.getElementById('deviceId').value;
-  if (!/^[A-Za-z0-9_-]{1,26}$/.test(deviceId)) {
-    alert('Device ID harus 1–26 karakter: huruf, angka, tanda - atau _.');
-    document.getElementById('deviceId').focus();
-    return;
-  }
-  const timezoneInput = document.getElementById('tz');
-  if (timezoneInput.value.trim() === '' || !Number.isInteger(Number(timezoneInput.value)) ||
-      Number(timezoneInput.value) < -12 || Number(timezoneInput.value) > 14) {
-    alert('Timezone wajib diisi dengan bilangan bulat antara UTC-12 dan UTC+14.');
-    timezoneInput.focus();
-    return;
-  }
-  const timeInputs = document.querySelectorAll('#chBody input[type="time"]');
-  for (const timeInput of timeInputs) {
-    timeInput.setCustomValidity('');
-    if (!timeInput.value || !timeInput.checkValidity()) {
-      timeInput.setCustomValidity('Waktu wajib diisi.');
-      timeInput.reportValidity();
-      return;
-    }
-  }
-  ['deviceId','ssid1','ssid2','mqttHost','mqttPath','mqttUser','pass1','pass2','mqttPass','mqttCaCert','apPassword'].forEach(k => cfg[k] = document.getElementById(k).value);
-  cfg.clearPass1 = document.getElementById('clearPass1').checked;
-  cfg.clearPass2 = document.getElementById('clearPass2').checked;
-  cfg.mqttPort = Number(document.getElementById('mqttPort').value);
-  cfg.tz = Number(document.getElementById('tz').value);
-  cfg.mqttUseSsl = document.getElementById('mqttUseSsl').checked;
-  const res = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg)});
-  const result = await res.json();
-  if (!res.ok || !result.ok) { alert('Konfigurasi ditolak: ' + (result.error || 'kesalahan tidak diketahui')); return; }
-  alert('Konfigurasi tersimpan. ESP32 sedang mencoba Wi-Fi; AP tetap aktif sampai koneksi berhasil.');
-  await loadCfg();
-}
-loadCfg().catch(err => alert(err.message));
-</script>
+    <main>
+      <section id="dashboardView" class="view is-visible" aria-labelledby="dashboardTitle">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">OVERVIEW</p>
+            <h1 id="dashboardTitle">Dashboard</h1>
+            <p class="muted">Pantau koneksi dan kendalikan relay dari satu halaman.</p>
+          </div>
+          <button id="refreshDashboard" class="button button-quiet" type="button">↻ <span>Refresh</span></button>
+        </div>
+
+        <div class="status-grid">
+          <article class="status-card">
+            <div class="status-card-icon wifi-icon">⌁</div>
+            <div><span class="status-label">Wi-Fi</span><strong id="wifiState">Memeriksa…</strong><small id="wifiDetail">Menunggu status perangkat</small></div>
+          </article>
+          <article class="status-card">
+            <div class="status-card-icon mqtt-icon">⇄</div>
+            <div><span class="status-label">MQTT / WSS</span><strong id="mqttState">Memeriksa…</strong><small id="mqttDetail">Menunggu status broker</small></div>
+          </article>
+          <article class="status-card">
+            <div class="status-card-icon ap-icon">⌖</div>
+            <div><span class="status-label">Fallback AP</span><strong id="apState">Memeriksa…</strong><small id="apDetail">Menunggu status access point</small></div>
+          </article>
+        </div>
+
+        <div class="section-heading">
+          <div><p class="eyebrow">LIVE CONTROL</p><h2>Kontrol Relay</h2></div>
+          <span id="relaySummary" class="summary-chip">0 / 10 aktif</span>
+        </div>
+        <div id="channelGrid" class="channel-grid" aria-live="polite">
+          <div class="loading-panel">Memuat status channel…</div>
+        </div>
+        <p class="page-footnote">Perubahan status relay langsung diterapkan dan disinkronkan ke MQTT saat broker terhubung.</p>
+      </section>
+
+      <section id="settingsView" class="view" aria-labelledby="settingsTitle" hidden>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">DEVICE CONFIGURATION</p>
+            <h1 id="settingsTitle">Pengaturan</h1>
+            <p class="muted">Konfigurasi jaringan, broker, perangkat, dan pemetaan GPIO.</p>
+          </div>
+        </div>
+
+        <div class="settings-layout">
+          <aside class="settings-nav" aria-label="Bagian pengaturan">
+            <button type="button" class="settings-nav-item is-active" data-section="wifiSection">Wi-Fi</button>
+            <button type="button" class="settings-nav-item" data-section="mqttSection">MQTT & TLS</button>
+            <button type="button" class="settings-nav-item" data-section="deviceSection">Perangkat</button>
+            <button type="button" class="settings-nav-item" data-section="channelSection">GPIO & Jadwal</button>
+          </aside>
+
+          <form id="settingsForm" class="settings-content">
+            <section id="wifiSection" class="settings-section">
+              <div class="section-title"><div><p class="eyebrow">NETWORK</p><h2>Jaringan Wi-Fi</h2></div><span class="section-number">01</span></div>
+              <p class="section-description">Atur dua jaringan secara terpisah. Perangkat mencoba jaringan utama dan beralih ke jaringan cadangan jika diperlukan.</p>
+              <div class="form-grid">
+                <article class="form-card">
+                  <div class="form-card-heading"><span class="network-index">01</span><div><h3>Wi-Fi Utama</h3><p>Prioritas koneksi pertama</p></div></div>
+                  <label for="ssid1">SSID utama</label>
+                  <input id="ssid1" name="ssid1" type="text" maxlength="32" autocomplete="off">
+                  <label for="pass1">Password utama</label>
+                  <input id="pass1" name="pass1" type="password" autocomplete="new-password" placeholder="Kosongkan untuk mempertahankan password">
+                  <label class="check-row"><input id="clearPass1" type="checkbox"><span>Gunakan jaringan terbuka (hapus password)</span></label>
+                  <p id="pass1Status" class="field-hint">Status password belum diketahui.</p>
+                </article>
+                <article class="form-card">
+                  <div class="form-card-heading"><span class="network-index secondary">02</span><div><h3>Wi-Fi Cadangan</h3><p>Digunakan saat jaringan utama gagal</p></div></div>
+                  <label for="ssid2">SSID cadangan</label>
+                  <input id="ssid2" name="ssid2" type="text" maxlength="32" autocomplete="off">
+                  <label for="pass2">Password cadangan</label>
+                  <input id="pass2" name="pass2" type="password" autocomplete="new-password" placeholder="Kosongkan untuk mempertahankan password">
+                  <label class="check-row"><input id="clearPass2" type="checkbox"><span>Gunakan jaringan terbuka (hapus password)</span></label>
+                  <p id="pass2Status" class="field-hint">Status password belum diketahui.</p>
+                </article>
+              </div>
+              <div class="info-note"><strong>Catatan:</strong> Password tersimpan tidak pernah dikirim kembali ke browser. Isi password baru hanya jika ingin menggantinya.</div>
+            </section>
+
+            <section id="mqttSection" class="settings-section">
+              <div class="section-title"><div><p class="eyebrow">BROKER CONNECTION</p><h2>MQTT & TLS</h2></div><span class="section-number">02</span></div>
+              <div class="form-grid">
+                <div class="field-group"><label for="mqttHost">Broker host</label><input id="mqttHost" type="text" maxlength="253" required></div>
+                <div class="field-group"><label for="mqttPort">Port</label><input id="mqttPort" type="number" min="1" max="65535" required></div>
+                <div class="field-group"><label for="mqttPath">WebSocket path</label><input id="mqttPath" type="text" maxlength="128" required></div>
+                <div class="field-group"><label for="mqttUser">Username</label><input id="mqttUser" type="text" maxlength="128" autocomplete="off"></div>
+                <div class="field-group"><label for="mqttPass">Password</label><input id="mqttPass" type="password" autocomplete="new-password" placeholder="Kosongkan untuk mempertahankan password"></div>
+                <div class="field-group field-span"><label class="check-row"><input id="mqttUseSsl" type="checkbox"><span>Aktifkan TLS / MQTT over WSS</span></label></div>
+                <div class="field-group field-span"><label for="mqttCaCert">CA certificate (PEM)</label><textarea id="mqttCaCert" rows="7" spellcheck="false" placeholder="Tempel sertifikat CA di sini. Kosongkan untuk menghapus CA."></textarea><small class="field-hint">ESP32 DevKit menggunakan CA bundle bawaan jika kolom kosong. ESP32-S3/C3 tetap mendukung koneksi tanpa CA sesuai keputusan konfigurasi proyek; mode ini tidak memverifikasi identitas server. ESP8266 memerlukan CA.</small></div>
+              </div>
+            </section>
+
+            <section id="deviceSection" class="settings-section">
+              <div class="section-title"><div><p class="eyebrow">DEVICE</p><h2>Identitas & Access Point</h2></div><span class="section-number">03</span></div>
+              <div class="form-grid">
+                <div class="field-group"><label for="deviceId">Device ID</label><input id="deviceId" type="text" minlength="1" maxlength="26" pattern="[A-Za-z0-9_-]{1,26}" required><small class="field-hint">1–26 karakter: huruf, angka, - dan _.</small></div>
+                <div class="field-group"><label for="tz">Timezone (UTC offset)</label><input id="tz" type="number" min="-12" max="14" step="1" required></div>
+                <div class="field-group"><label for="apPassword">Password Fallback AP</label><input id="apPassword" type="password" minlength="8" maxlength="63" autocomplete="new-password" placeholder="Kosongkan untuk mempertahankan password"><small id="apPasswordStatus" class="field-hint"></small></div>
+                <div class="field-group"><label for="boardProfile">Profil board</label><input id="boardProfile" type="text" readonly></div>
+                <div class="field-group field-span"><label for="safeGpioPins">GPIO aman pada board ini</label><input id="safeGpioPins" type="text" readonly></div>
+              </div>
+            </section>
+
+            <section id="channelSection" class="settings-section">
+              <div class="section-title"><div><p class="eyebrow">HARDWARE MAPPING</p><h2>GPIO & Jadwal</h2></div><span class="section-number">04</span></div>
+              <p class="section-description">Tentukan nama channel, pin relay, pin tombol fisik, polaritas relay, dan jadwal otomatis.</p>
+              <div id="channelSettings" class="channel-settings">
+                <div class="loading-panel">Memuat konfigurasi channel…</div>
+              </div>
+            </section>
+
+            <div class="save-bar">
+              <span id="saveMessage" role="status" aria-live="polite">Perubahan belum disimpan.</span>
+              <button id="saveSettings" class="button button-primary" type="submit">Simpan Pengaturan</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </main>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <footer class="app-footer">M-Home Universal Relay Controller <span>•</span> Local device interface</footer>
+  </div>
 </body>
 </html>
