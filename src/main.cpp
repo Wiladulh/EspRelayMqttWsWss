@@ -333,24 +333,36 @@ void loadConfig() {
     if (doc["ssid1"].is<const char*>()) {
         value = doc["ssid1"].as<String>();
         if (value.length() <= 32) cfg.ssid1 = value;
-        else corrected = true;
-    } else corrected = true;
+        else { cfg.ssid1 = ""; corrected = true; }
+    } else {
+        cfg.ssid1 = "";
+        corrected = true;
+    }
     if (doc["pass1"].is<const char*>()) {
         value = doc["pass1"].as<String>();
         if (isValidWifiPassword(value)) cfg.pass1 = value;
-        else corrected = true;
-    } else corrected = true;
+        else { cfg.pass1 = ""; corrected = true; }
+    } else {
+        cfg.pass1 = "";
+        corrected = true;
+    }
 
     if (doc["ssid2"].is<const char*>()) {
         value = doc["ssid2"].as<String>();
         if (value.length() <= 32) cfg.ssid2 = value;
-        else corrected = true;
-    } else corrected = true;
+        else { cfg.ssid2 = ""; corrected = true; }
+    } else {
+        cfg.ssid2 = "";
+        corrected = true;
+    }
     if (doc["pass2"].is<const char*>()) {
         value = doc["pass2"].as<String>();
         if (isValidWifiPassword(value)) cfg.pass2 = value;
-        else corrected = true;
-    } else corrected = true;
+        else { cfg.pass2 = ""; corrected = true; }
+    } else {
+        cfg.pass2 = "";
+        corrected = true;
+    }
 
     if (doc["mqttHost"].is<const char*>()) {
         value = doc["mqttHost"].as<String>();
