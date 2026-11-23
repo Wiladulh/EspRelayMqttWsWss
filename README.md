@@ -1,6 +1,6 @@
 # M-Home Relay Node Universal (v4)
 
-Firmware modular untuk **ESP8266 NodeMCU, ESP32 DevKit, ESP32-S3 N16R8, dan ESP32-C3 SuperMini** dengan dukungan:
+Firmware modular untuk **ESP32 DevKit, ESP32-S3 N16R8, dan ESP32-C3 SuperMini** dengan dukungan:
 
 - **10 channel relay** dengan pemetaan GPIO dinamis dan tombol fisik dengan debounce.
 - **Dual-SSID Wi-Fi**: dua slot SSID dan dua password disimpan sebagai pasangan terpisah; koneksi mencoba jaringan utama dan cadangan secara bergiliran.
@@ -8,6 +8,16 @@ Firmware modular untuk **ESP8266 NodeMCU, ESP32 DevKit, ESP32-S3 N16R8, dan ESP3
 - **NTP scheduler** per channel.
 - **MQTT over WebSockets (WS/WSS)**.
 - **WebUI modular berbasis LittleFS** dengan halaman Dashboard dan Pengaturan terpisah.
+
+## Target board aktif
+
+Pengembangan dan CI saat ini difokuskan pada tiga target ESP32:
+
+- ESP32 DevKit
+- ESP32-S3 N16R8
+- ESP32-C3 SuperMini
+
+ESP8266 NodeMCU untuk sementara bukan target aktif CI. Source code dan environment `esp8266_nodemcu` tetap dipertahankan di `platformio.ini` agar dukungan lama dapat diaktifkan kembali, tetapi environment tersebut tidak tercakup dalam verifikasi CI aktif.
 
 ## Struktur WebUI
 
@@ -38,7 +48,6 @@ Jika TLS/WSS diaktifkan, firmware menunggu sinkronisasi waktu NTP sebelum handsh
 
 - **ESP32 DevKit:** bila kolom CA Certificate kosong, firmware memakai CA bundle publik bawaan ESP32 Arduino core dan memverifikasi sertifikat server. Jika kolom diisi, CA PEM tersebut dipakai sebagai trust anchor.
 - **ESP32-S3 dan ESP32-C3:** tanpa CA, koneksi WSS tetap diizinkan sesuai keputusan kompatibilitas perangkat. Trafik tetap terenkripsi, tetapi identitas server **tidak diverifikasi** sehingga koneksi rentan terhadap man-in-the-middle. Jika CA PEM diisi, firmware menggunakan CA tersebut untuk verifikasi sertifikat.
-- **ESP8266 NodeMCU:** isi CA broker dalam format PEM; tanpa CA, koneksi WSS tidak dimulai.
 
 Gunakan CA tepercaya jika verifikasi identitas broker diperlukan. Jangan memasukkan private key. Sertifikat CA bukan password dan dikirim kembali oleh endpoint konfigurasi agar dapat diedit melalui WebUI. Kosongkan kolom CA lalu simpan untuk menghapus CA yang tersimpan. Pada ESP32 DevKit, ini mengaktifkan CA bundle bawaan; pada ESP32-S3/C3, ini mempertahankan mode tanpa CA yang memang diizinkan.
 
@@ -48,7 +57,6 @@ Password Wi-Fi, MQTT, dan AP tidak dikembalikan oleh GET /api/config. Kolom pass
 
 | Board | GPIO relay/tombol yang diizinkan |
 |---|---|
-| ESP8266 NodeMCU | 4, 5, 12, 13, 14 |
 | ESP32 DevKit | 4, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33 |
 | ESP32-S3 N16R8 | 4–18, 21, 38, 47 |
 | ESP32-C3 SuperMini | 0, 1, 3, 4, 5, 6, 7, 10 |
@@ -59,12 +67,13 @@ Daftar GPIO sengaja konservatif untuk board profile yang ditentukan di platformi
 
 Versi platform dan library dikunci ke versi yang berhasil dipakai pada CI terakhir agar build tidak berubah akibat rilis dependency baru. PlatformIO Core pada CI terakhir adalah 6.2.0.
 
-Pilih environment di platformio.ini:
+Target aktif di `platformio.ini`:
 
-- esp8266_nodemcu
-- esp32_devkit
-- esp32s3_n16r8
-- esp32c3_supermini
+- `esp32_devkit` (default)
+- `esp32s3_n16r8`
+- `esp32c3_supermini`
+
+Environment legacy `esp8266_nodemcu` masih tersedia tetapi tidak dibangun oleh CI aktif.
 
 Perintah:
 
@@ -75,7 +84,7 @@ pio run -e <environment> -t uploadfs
 pio run -e <environment> -t upload
 ~~~
 
-CI membangun firmware dan LittleFS untuk keempat environment. Artifact ESP32 DevKit esp32-devkit-flash-images berisi firmware.bin, partitions.bin, dan littlefs.bin. Tiga environment lainnya memiliki artifact <environment>-firmware-littlefs berisi firmware dan filesystem masing-masing.
+CI otomatis membangun firmware dan LittleFS untuk ketiga target ESP32. Workflow manual menyediakan pilihan untuk membangun semua target ESP32 atau satu board saja. Artifact ESP32 DevKit `esp32-devkit-flash-images` berisi firmware.bin, partitions.bin, dan littlefs.bin. Artifact ESP32-S3/C3 masing-masing berisi firmware dan filesystem.
 
 Untuk ESP32 DevKit 4 MB, setelah memastikan board dan port serial benar, flash image secara terpisah:
 
