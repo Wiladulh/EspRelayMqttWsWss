@@ -46,7 +46,9 @@ Daftar GPIO sengaja konservatif untuk board profile yang ditentukan di `platform
 
 ## Build & upload (PlatformIO)
 
-Versi platform dan library dikunci ke versi yang berhasil dipakai pada CI terakhir agar build tidak berubah akibat rilis dependency baru. PlatformIO Core pada CI terakhir adalah 6.2.0.\n\nPilih environment di `platformio.ini`:
+Versi platform dan library dikunci ke versi yang berhasil dipakai pada CI terakhir agar build tidak berubah akibat rilis dependency baru. PlatformIO Core pada CI terakhir adalah 6.2.0.
+
+Pilih environment di `platformio.ini`:
 
 - `esp8266_nodemcu`
 - `esp32_devkit`
