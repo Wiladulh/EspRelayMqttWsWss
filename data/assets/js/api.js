@@ -16,6 +16,6 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config)
     }),
-    toggleChannel: channel => request("/api/toggle?ch=" + encodeURIComponent(channel), { method: "POST" })
+    toggleChannel: (channel, state) => request("/api/toggle?ch=" + encodeURIComponent(channel) + "&state=" + (state ? "1" : "0"), { method: "POST" })
   };
 })();

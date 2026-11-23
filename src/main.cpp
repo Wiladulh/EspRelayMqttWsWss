@@ -845,17 +845,22 @@ void setupWebUI() {
             if (channelArg[i] < '0' || channelArg[i] > '9') numeric = false;
         }
         const int ch = numeric ? channelArg.toInt() - 1 : -1;
-        if (ch >= 0 && ch < MAX_CHANNELS) {
-            setChannelState(ch, !cfg.channels[ch].state);
-            JsonDocument result;
-            result["ok"] = true;
-            result["state"] = cfg.channels[ch].state;
-            String response;
-            serializeJson(result, response);
-            server.send(200, "application/json", response);
-        } else {
-            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_channel\"}");
+        const String requestedState = server.arg("state");
+        if (ch < 0 || ch >= MAX_CHANNELS ||
+            (requestedState.length() > 0 && requestedState != "0" && requestedState != "1")) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_channel_or_state\"}");
+            return;
         }
+        const bool newState = requestedState.length() == 0
+            ? !cfg.channels[ch].state
+            : requestedState == "1";
+        setChannelState(ch, newState);
+        JsonDocument result;
+        result["ok"] = true;
+        result["state"] = cfg.channels[ch].state;
+        String response;
+        serializeJson(result, response);
+        server.send(200, "application/json", response);
     });
 
     server.begin();

@@ -7,17 +7,18 @@
     if (node) node.textContent = value;
   }
 
-  function setConnectionBadge(connected) {
+  function setConnectionBadge(wifiConnected, apActive) {
     const badge = document.getElementById("connectionBadge");
-    badge.className = "status-badge " + (connected ? "status-connected" : "status-disconnected");
-    badge.querySelector("span").textContent = connected ? "Perangkat online" : "Wi-Fi terputus";
+    const reachable = wifiConnected || apActive;
+    badge.className = "status-badge " + (reachable ? "status-connected" : "status-disconnected");
+    badge.querySelector("span").textContent = wifiConnected ? "Perangkat online" : apActive ? "Fallback AP aktif" : "Perangkat tidak terjangkau";
   }
 
   function renderStatus(status) {
     const wifi = Boolean(status.wifiConnected);
     const mqtt = Boolean(status.mqttConnected);
     const ap = Boolean(status.apActive);
-    setConnectionBadge(wifi);
+    setConnectionBadge(wifi, ap);
     setText("wifiState", wifi ? "Terhubung" : "Terputus");
     setText("wifiDetail", wifi ? ((status.wifiSsid || "Wi-Fi") + " · " + (status.wifiIp || "IP tidak tersedia")) : "Menggunakan fallback jika tersedia");
     setText("mqttState", mqtt ? "Terhubung" : "Terputus");
@@ -64,7 +65,7 @@
       input.addEventListener("change", async () => {
         input.disabled = true;
         try {
-          await window.MHomeApi.toggleChannel(channel.id);
+          await window.MHomeApi.toggleChannel(channel.id, input.checked);
           await refresh();
         } catch (error) {
           input.checked = !input.checked;
