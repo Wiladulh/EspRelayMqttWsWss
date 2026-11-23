@@ -19,13 +19,13 @@ jobs:
           - esp32c3_supermini
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.x'
+          python-version: '3.15.2'
       - name: Install PlatformIO
-        run: python -m pip install --upgrade platformio
+        run: python -m pip install platformio==6.2.0
       - name: Build firmware
         run: pio run -e ${{ matrix.environment }}
 

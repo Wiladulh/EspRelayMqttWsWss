@@ -9,6 +9,7 @@
   .card { background: #1e293b; border-radius: 10px; padding: 16px; margin-bottom: 16px; border: 1px solid #334155; }
   h2 { margin-top: 0; font-size: 1.1rem; color: #38bdf8; }
   input, select, textarea { background: #0f172a; color: #f8fafc; border: 1px solid #475569; padding: 6px 8px; border-radius: 6px; width: 100%; box-sizing: border-box; }
+  input[type="checkbox"] { width: auto; }
   textarea { min-height: 130px; font: 0.78rem ui-monospace, monospace; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
   button { background: #0284c7; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
@@ -22,20 +23,20 @@
   <div class="card">
     <h2>M-Home Universal Node (10-CH GPIO & MQTT WSS)</h2>
     <div class="grid">
-      <div><label>Device ID</label><input id="deviceId"></div>
+      <div><label>Device ID (1–26: huruf, angka, - atau _)</label><input id="deviceId" maxlength="26" pattern="[A-Za-z0-9_-]{1,26}" required></div>
       <div><label>SSID Utama</label><input id="ssid1"></div>
-      <div><label>Pass Utama</label><input id="pass1" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
+      <div><label>Pass Utama</label><input id="pass1" type="password" autocomplete="new-password" placeholder="Kosong = tetap"><label><input id="clearPass1" type="checkbox"> Gunakan Wi-Fi terbuka (hapus password)</label></div>
       <div><label>SSID Cadangan</label><input id="ssid2"></div>
-      <div><label>Pass Cadangan</label><input id="pass2" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
+      <div><label>Pass Cadangan</label><input id="pass2" type="password" autocomplete="new-password" placeholder="Kosong = tetap"><label><input id="clearPass2" type="checkbox"> Gunakan Wi-Fi terbuka (hapus password)</label></div>
       <div><label>MQTT WSS Host</label><input id="mqttHost"></div>
       <div><label>Port</label><input id="mqttPort" type="number"></div>
       <div><label>Path</label><input id="mqttPath"></div>
       <div><label>MQTT Username</label><input id="mqttUser"></div>
       <div><label>MQTT Password</label><input id="mqttPass" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
-      <div style="grid-column:1/-1"><label>MQTT TLS CA Certificate (PEM, wajib untuk WSS)</label><textarea id="mqttCaCert" spellcheck="false" placeholder="Tempel sertifikat CA broker di sini. Tanpa CA, koneksi WSS akan ditolak."></textarea></div>
+      <div style="grid-column:1/-1"><label>MQTT TLS CA Certificate (PEM; opsional ESP32, wajib ESP8266)</label><textarea id="mqttCaCert" spellcheck="false" placeholder="Tempel CA broker untuk verifikasi sertifikat. Kosongkan kolom ini untuk menghapus CA. ESP32-S3/C3 tetap dapat konek tanpa CA, tetapi sertifikat server tidak diverifikasi."></textarea></div>
       <div><label>Password AP Fallback (min. 8 karakter)</label><input id="apPassword" type="password" autocomplete="new-password" placeholder="Kosong = tetap"></div>
       <div><label>Gunakan TLS/WSS</label><input id="mqttUseSsl" type="checkbox"></div>
-      <div><label>Timezone (UTC+)</label><input id="tz" type="number"></div>
+      <div><label>Timezone (UTC+)</label><input id="tz" type="number" min="-12" max="14" step="1" required></div>
       <div><label>Profil Board</label><input id="boardProfile" readonly></div>
       <div><label>GPIO aman untuk relay/tombol</label><input id="safeGpioPins" readonly></div>
     </div>
@@ -67,6 +68,7 @@ function input(td, type, value, update) {
   const el = document.createElement('input');
   el.type = type;
   if (type === 'checkbox') el.checked = Boolean(value);
+  else if (type === 'number' && Number(value) < 0) el.value = '';
   else el.value = value ?? '';
   el.addEventListener('change', () => update(el));
   td.appendChild(el);
@@ -78,6 +80,8 @@ async function loadCfg() {
   ['deviceId','ssid1','ssid2','mqttHost','mqttPort','mqttPath','mqttUser','tz','mqttCaCert'].forEach(k => {
     document.getElementById(k).value = cfg[k] ?? '';
   });
+  document.getElementById('clearPass1').checked = false;
+  document.getElementById('clearPass2').checked = false;
   ['pass1','pass2','mqttPass','apPassword'].forEach(k => {
     const input = document.getElementById(k);
     input.value = '';
@@ -92,15 +96,19 @@ async function loadCfg() {
     const tr = document.createElement('tr');
     cell(tr, c.id);
     input(cell(tr), 'text', c.name, el => cfg.channels[idx].name = el.value);
-    input(cell(tr), 'number', c.rPin, el => cfg.channels[idx].rPin = Number(el.value));
-    input(cell(tr), 'number', c.bPin, el => cfg.channels[idx].bPin = Number(el.value));
+    input(cell(tr), 'number', c.rPin, el => cfg.channels[idx].rPin = el.value === '' ? -1 : Number(el.value));
+    input(cell(tr), 'number', c.bPin, el => cfg.channels[idx].bPin = el.value === '' ? -1 : Number(el.value));
     input(cell(tr), 'checkbox', c.aLow, el => cfg.channels[idx].aLow = el.checked);
     input(cell(tr), 'checkbox', c.sEn, el => cfg.channels[idx].sEn = el.checked);
     input(cell(tr), 'time', String(c.hOn).padStart(2,'0') + ':' + String(c.mOn).padStart(2,'0'), el => {
+      if (!el.value) { el.setCustomValidity('Waktu ON wajib diisi.'); return; }
+      el.setCustomValidity('');
       const [hour, minute] = el.value.split(':').map(Number);
       cfg.channels[idx].hOn = hour; cfg.channels[idx].mOn = minute;
     });
     input(cell(tr), 'time', String(c.hOff).padStart(2,'0') + ':' + String(c.mOff).padStart(2,'0'), el => {
+      if (!el.value) { el.setCustomValidity('Waktu OFF wajib diisi.'); return; }
+      el.setCustomValidity('');
       const [hour, minute] = el.value.split(':').map(Number);
       cfg.channels[idx].hOff = hour; cfg.channels[idx].mOff = minute;
     });
@@ -119,7 +127,31 @@ async function toggleCh(ch) {
   await loadCfg();
 }
 async function saveCfg() {
+  const deviceId = document.getElementById('deviceId').value;
+  if (!/^[A-Za-z0-9_-]{1,26}$/.test(deviceId)) {
+    alert('Device ID harus 1–26 karakter: huruf, angka, tanda - atau _.');
+    document.getElementById('deviceId').focus();
+    return;
+  }
+  const timezoneInput = document.getElementById('tz');
+  if (timezoneInput.value.trim() === '' || !Number.isInteger(Number(timezoneInput.value)) ||
+      Number(timezoneInput.value) < -12 || Number(timezoneInput.value) > 14) {
+    alert('Timezone wajib diisi dengan bilangan bulat antara UTC-12 dan UTC+14.');
+    timezoneInput.focus();
+    return;
+  }
+  const timeInputs = document.querySelectorAll('#chBody input[type="time"]');
+  for (const timeInput of timeInputs) {
+    timeInput.setCustomValidity('');
+    if (!timeInput.value || !timeInput.checkValidity()) {
+      timeInput.setCustomValidity('Waktu wajib diisi.');
+      timeInput.reportValidity();
+      return;
+    }
+  }
   ['deviceId','ssid1','ssid2','mqttHost','mqttPath','mqttUser','pass1','pass2','mqttPass','mqttCaCert','apPassword'].forEach(k => cfg[k] = document.getElementById(k).value);
+  cfg.clearPass1 = document.getElementById('clearPass1').checked;
+  cfg.clearPass2 = document.getElementById('clearPass2').checked;
   cfg.mqttPort = Number(document.getElementById('mqttPort').value);
   cfg.tz = Number(document.getElementById('tz').value);
   cfg.mqttUseSsl = document.getElementById('mqttUseSsl').checked;

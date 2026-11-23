@@ -21,16 +21,17 @@ Firmware modular untuk **ESP8266 NodeMCU, ESP32 DevKit, ESP32-S3 N16R8, dan ESP3
 
 ## Konfigurasi MQTT WSS
 
-Jika TLS/WSS diaktifkan, firmware menunggu sinkronisasi waktu NTP sebelum handshake dan memverifikasi sertifikat server (tanpa fallback TLS insecure).
+Jika TLS/WSS diaktifkan, firmware menunggu sinkronisasi waktu NTP sebelum handshake. Perilaku verifikasi sertifikat berbeda menurut board:
 
-- **ESP32 DevKit:** bila kolom **MQTT TLS CA Certificate** kosong, firmware memakai CA bundle publik bawaan ESP32 Arduino core. Jika kolom diisi, CA PEM tersebut dipakai sebagai trust anchor.
+- **ESP32 DevKit:** bila kolom **MQTT TLS CA Certificate** kosong, firmware memakai CA bundle publik bawaan ESP32 Arduino core dan memverifikasi sertifikat server. Jika kolom diisi, CA PEM tersebut dipakai sebagai trust anchor.
+- **ESP32-S3 dan ESP32-C3:** tanpa CA, koneksi WSS tetap diizinkan sesuai keputusan kompatibilitas perangkat. Trafik tetap terenkripsi, tetapi identitas server **tidak diverifikasi** sehingga koneksi rentan terhadap man-in-the-middle. Jika CA PEM diisi, firmware menggunakan CA tersebut untuk verifikasi sertifikat.
 - **ESP8266 NodeMCU:** isi kolom **MQTT TLS CA Certificate** dengan CA broker dalam format PEM; tanpa CA, koneksi WSS tidak dimulai.
 
-Gunakan sertifikat CA tepercaya. Jangan memasukkan private key. Sertifikat CA bukan password dan akan dikirim kembali oleh endpoint konfigurasi agar dapat diedit melalui WebUI.
+Gunakan CA tepercaya jika verifikasi identitas broker diperlukan. Jangan memasukkan private key. Sertifikat CA bukan password dan akan dikirim kembali oleh endpoint konfigurasi agar dapat diedit melalui WebUI. Kosongkan kolom CA lalu simpan untuk menghapus CA yang tersimpan. Pada ESP32 DevKit, ini mengaktifkan kembali CA bundle bawaan; pada ESP32-S3/C3, ini mempertahankan mode tanpa CA yang memang diizinkan.
 
 Build CI untuk ESP32 DevKit mengunggah artifact `esp32-devkit-flash-images` yang berisi `firmware.bin`, `partitions.bin`, dan `littlefs.bin`. Partition table khusus DevKit mempertahankan partisi `at_customize` yang ada, menyediakan dua slot OTA 1.375 MB, dan menyediakan partisi LittleFS 256 KB berlabel `spiffs`.
 
-Password Wi-Fi, MQTT, dan AP tidak dikembalikan oleh `GET /api/config`. Kolom password yang dibiarkan kosong saat menyimpan akan mempertahankan password tersimpan; isi nilai baru untuk menggantinya.
+Password Wi-Fi, MQTT, dan AP tidak dikembalikan oleh `GET /api/config`. Kolom password Wi-Fi, MQTT, dan AP yang dibiarkan kosong saat menyimpan akan mempertahankan password tersimpan; isi nilai baru untuk menggantinya. Untuk jaringan Wi-Fi terbuka, centang opsi **Gunakan Wi-Fi terbuka (hapus password)** pada SSID terkait. Password Wi-Fi menerima 8–63 karakter atau 64 digit heksadesimal (PSK); panjang di luar itu ditolak. SSID kosong menonaktifkan slot jaringan tersebut.
 
 ## Profil GPIO
 
@@ -44,6 +45,8 @@ Password Wi-Fi, MQTT, dan AP tidak dikembalikan oleh `GET /api/config`. Kolom pa
 Daftar GPIO sengaja konservatif untuk board profile yang ditentukan di `platformio.ini`. Periksa skematik board/clone sebelum menghubungkan relay, karena komponen tambahan pada varian board dapat menggunakan GPIO tertentu.
 
 ## Build & upload (PlatformIO)
+
+Versi platform dan library dikunci ke versi yang berhasil dipakai pada CI terakhir agar build tidak berubah akibat rilis dependency baru. PlatformIO Core pada CI terakhir adalah 6.2.0.
 
 Pilih environment di `platformio.ini`:
 
